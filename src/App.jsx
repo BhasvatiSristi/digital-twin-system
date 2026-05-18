@@ -59,14 +59,13 @@ function Loader() {
 
 export default function App() {
   const [uploads, setUploads] = useState([]);
-  const [visibleModelIds, setVisibleModelIds] = useState(() => new Set([defaultModel.id]));
-  const [selectedModelId, setSelectedModelId] = useState(defaultModel.id);
-  const [status, setStatus] = useState("Showing the default model from public/model.");
+  // start with no models visible by default
+  const [visibleModelIds, setVisibleModelIds] = useState(() => new Set());
+  const [selectedModelId, setSelectedModelId] = useState(null);
+  const [status, setStatus] = useState("No model loaded.");
   const objectUrlsRef = useRef([]);
-  const [positions, setPositions] = useState({ [defaultModel.id]: [0, 0, 0] });
-  const [modelSettings, setModelSettings] = useState(() => ({
-    [defaultModel.id]: createDefaultSettings(0),
-  }));
+  const [positions, setPositions] = useState({});
+  const [modelSettings, setModelSettings] = useState(() => ({}));
   const [inspectorModelId, setInspectorModelId] = useState(null);
   const [inspectorDraft, setInspectorDraft] = useState(null);
 

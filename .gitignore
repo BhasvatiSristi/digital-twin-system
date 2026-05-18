@@ -33,3 +33,7 @@ dist-ssr
 # Ignore binary assets (optional)
 *.fbx
 *.obj
+
+# Ignore these component source files (user requested)
+src/components/BWEAssembly.jsx
+src/components/BWEWheel.jsx
