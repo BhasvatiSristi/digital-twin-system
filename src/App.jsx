@@ -7,7 +7,8 @@ import CadModel from "./components/CadModel";
 import Sidebar from "./components/Sidebar";
 import Inspector from "./components/Inspector";
 
-const supportedExtensions = ["glb", "gltf", "stl", "obj"];
+const supportedExtensions = ["glb", "stl", "step"];
+const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
 const defaultModel = {
   id: "default-model",
   name: "Default model (BWEAssembly.glb)",
@@ -48,6 +49,10 @@ function formatFileLabel(name) {
   return extension ? extension.toUpperCase() : "FILE";
 }
 
+function createUploadId(file, suffix = "") {
+  return `${file.name}-${file.lastModified}-${file.size}-${suffix || "upload"}-${Math.random().toString(36).slice(2)}`;
+}
+
 function normalizeModelId(modelId) {
   return String(modelId);
 }
@@ -76,10 +81,53 @@ export default function App() {
     };
   }, []);
 
+  const convertToGlb = async (file) => {
+    const extension = getFileExtension(file.name);
+
+    if (extension === "glb") {
+      const url = URL.createObjectURL(file);
+      objectUrlsRef.current.push(url);
+
+      return {
+        id: createUploadId(file, "glb"),
+        name: file.name,
+        url,
+        isDefault: false,
+        sourceExtension: "glb",
+      };
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch(converterEndpoint, {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const message = await response.text();
+      throw new Error(message || `Failed to convert ${file.name}`);
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    objectUrlsRef.current.push(url);
+
+    return {
+      id: createUploadId(file, "glb"),
+      name: `${file.name.replace(/\.(step|stl)$/i, "")}.glb`,
+      url,
+      isDefault: false,
+      sourceExtension: extension,
+      convertedFrom: extension,
+    };
+  };
+
   const allModels = [defaultModel, ...uploads];
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
 
-  const handleFileChange = (event) => {
+  const handleFileChange = async (event) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
 
@@ -91,32 +139,35 @@ export default function App() {
     const rejectedCount = files.length - validFiles.length;
 
     if (!validFiles.length) {
-      setStatus("Unsupported file type. Use .glb, .gltf, .stl, or .obj.");
+      setStatus("Unsupported file type. Use .glb, .stl, or .step.");
       return;
     }
 
-    const nextUploads = validFiles.map((file) => {
-      const url = URL.createObjectURL(file);
-      objectUrlsRef.current.push(url);
+    setStatus(`Converting ${validFiles.length} file${validFiles.length === 1 ? "" : "s"}...`);
 
-      return {
-        id: `${file.name}-${file.lastModified}-${file.size}-${Math.random().toString(36).slice(2)}`,
-        name: file.name,
-        url,
-        isDefault: false,
-      };
-    });
+    const results = await Promise.allSettled(validFiles.map((file) => convertToGlb(file)));
+    const nextUploads = results
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
+    const failedFiles = results
+      .map((result, index) => ({ result, file: validFiles[index] }))
+      .filter(({ result }) => result.status === "rejected");
+
+    if (!nextUploads.length) {
+      const firstFailure = failedFiles[0]?.result.reason?.message ?? "Conversion failed.";
+      setStatus(firstFailure);
+      return;
+    }
 
     setUploads((currentUploads) => {
       const updated = [...currentUploads, ...nextUploads];
       // initialize positions for new uploads spaced along X
       setPositions((p) => {
         const next = { ...p };
-        const baseIndex = 0; // keep default at center
-        updated.forEach((m, i) => {
-          if (!next[m.id]) {
-            const x = (i + 1) * 70; // simple spacing
-            next[m.id] = [x, 0, 0];
+        nextUploads.forEach((model, index) => {
+          if (!next[model.id]) {
+            const x = (currentUploads.length + index + 1) * 70;
+            next[model.id] = [x, 0, 0];
           }
         });
         return next;
@@ -143,9 +194,13 @@ export default function App() {
       return nextVisibleIds;
     });
 
-    const addedMessage = nextUploads.length === 1 ? `${nextUploads[0].name} added.` : `${nextUploads.length} files added.`;
+    const addedMessage =
+      nextUploads.length === 1
+        ? `${nextUploads[0].convertedFrom ? `${nextUploads[0].convertedFrom.toUpperCase()} converted to GLB` : "GLB uploaded"}: ${nextUploads[0].name}.`
+        : `${nextUploads.length} files ready for viewing.`;
     const rejectedMessage = rejectedCount ? ` ${rejectedCount} unsupported file(s) skipped.` : "";
-    setStatus(`${addedMessage}${rejectedMessage}`);
+    const failedMessage = failedFiles.length ? ` ${failedFiles.length} file(s) could not be converted.` : "";
+    setStatus(`${addedMessage}${rejectedMessage}${failedMessage}`);
   };
 
   const handleToggleModel = (modelId) => {

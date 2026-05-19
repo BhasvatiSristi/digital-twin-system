@@ -20,13 +20,13 @@ export default function Sidebar({
       <p className="eyebrow">CAD viewer</p>
       <h1>Upload a model and inspect the part.</h1>
       <p className="description">
-        Drop in a supported CAD export and the scene will load it directly from your device.
+        Drop in a supported CAD export and the app will convert STEP and STL files to GLB before loading them.
       </p>
-      <p className="hint">Supported in-browser formats: GLB, GLTF, STL, and OBJ.</p>
+      <p className="hint">Supported formats: GLB, STL, STEP. Only GLB renders directly.</p>
 
       <label className="file-picker">
-        <span>Choose CAD files</span>
-        <input multiple type="file" accept=".glb,.gltf,.stl,.obj" onChange={handleFileChange} />
+        <span>Choose GLB, STL, or STEP files</span>
+        <input multiple type="file" accept=".glb,.stl,.step" onChange={handleFileChange} />
       </label>
 
       <div className="library-panel">
@@ -61,7 +61,13 @@ export default function Sidebar({
             <div key={model.id} className={`model-item ${selectedModelId === model.id ? "selected" : ""}`}>
               <div className="model-label" onClick={() => handleSelectModel(model.id)}>
                 <span>{model.name}</span>
-                <small style={{ marginLeft: 8 }}>{visibleModelIds.has(model.id) ? model.name.split('.').pop().toUpperCase() : "Hidden"}</small>
+                <small style={{ marginLeft: 8 }}>
+                  {visibleModelIds.has(model.id)
+                    ? model.convertedFrom
+                      ? `${model.convertedFrom.toUpperCase()} → GLB`
+                      : "GLB"
+                    : "Hidden"}
+                </small>
               </div>
               <div className="model-actions">
                 <button className="vis-btn" onClick={() => handleToggleModel(model.id)}>{visibleModelIds.has(model.id) ? "👁" : "🚫"}</button>

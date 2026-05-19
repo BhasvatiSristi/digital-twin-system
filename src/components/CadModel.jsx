@@ -1,48 +1,7 @@
 import { Center, useGLTF } from "@react-three/drei";
-import { useFrame, useLoader } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-
-function getFileExtension(url) {
-  return url.split("?")[0].split(".").pop()?.toLowerCase() ?? "";
-}
-
-function StlModel({ url, color = "#cfd8dc" }) {
-  const geometry = useLoader(STLLoader, url);
-
-  return (
-    <Center>
-      <mesh geometry={geometry}>
-        <meshStandardMaterial color={color} metalness={0.15} roughness={0.8} />
-      </mesh>
-    </Center>
-  );
-}
-
-function ObjModel({ url, color = "#cfd8dc" }) {
-  const object = useLoader(OBJLoader, url);
-
-  useEffect(() => {
-    if (!object) return;
-    object.traverse((child) => {
-      if (child.isMesh) {
-        if (child.material) child.material = child.material.clone();
-        else child.material = new THREE.MeshStandardMaterial();
-        child.material.color = new THREE.Color(color);
-        child.material.metalness = 0.15;
-        child.material.roughness = 0.8;
-      }
-    });
-  }, [object, color]);
-
-  return (
-    <Center>
-      <primitive object={object} scale={0.6} />
-    </Center>
-  );
-}
 
 function GltfModel({ url, color = "#cfd8dc" }) {
   const gltf = useGLTF(url);
@@ -71,7 +30,6 @@ function GltfModel({ url, color = "#cfd8dc" }) {
 }
 
 export default function CadModel({ id, url, position = [0, 0, 0], color, motion, selected, onSelect, onEdit, onMove }) {
-  const extension = useMemo(() => getFileExtension(url), [url]);
   const groupRef = useRef(null);
   const dragState = useRef({
     dragging: false,
@@ -184,22 +142,6 @@ export default function CadModel({ id, url, position = [0, 0, 0], color, motion,
       }
     },
   };
-
-  if (extension === "stl") {
-    return (
-      <group ref={groupRef} position={position} {...commonHandlers}>
-        <StlModel url={url} color={effectiveColor} />
-      </group>
-    );
-  }
-
-  if (extension === "obj") {
-    return (
-      <group ref={groupRef} position={position} {...commonHandlers}>
-        <ObjModel url={url} color={effectiveColor} />
-      </group>
-    );
-  }
 
   return (
     <group ref={groupRef} position={position} {...commonHandlers}>
