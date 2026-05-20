@@ -1,6 +1,7 @@
-import { Bounds, Html, OrbitControls, useProgress } from "@react-three/drei";
+import { Bounds, Html, OrbitControls, useProgress, Environment } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useRef, useState } from "react";
+import * as THREE from "three";
 
 import "./App.css";
 import CadModel from "./components/CadModel";
@@ -57,6 +58,10 @@ function normalizeModelId(modelId) {
   return String(modelId);
 }
 
+function normalizeVector(arrayLike) {
+  return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
+}
+
 function Loader() {
   const { progress } = useProgress();
   return <Html center>{Math.round(progress)} %</Html>;
@@ -67,12 +72,15 @@ export default function App() {
   // start with no models visible by default
   const [visibleModelIds, setVisibleModelIds] = useState(() => new Set());
   const [selectedModelId, setSelectedModelId] = useState(null);
+  const [faceSelection, setFaceSelection] = useState(null);
   const [status, setStatus] = useState("No model loaded.");
   const objectUrlsRef = useRef([]);
   const [positions, setPositions] = useState({});
+  const [rotations, setRotations] = useState({});
   const [modelSettings, setModelSettings] = useState(() => ({}));
   const [inspectorModelId, setInspectorModelId] = useState(null);
   const [inspectorDraft, setInspectorDraft] = useState(null);
+  const controlsRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -222,6 +230,91 @@ export default function App() {
     setSelectedModelId(modelId);
     const m = allModels.find((mm) => mm.id === modelId);
     if (m) setStatus(`Selected ${m.name}`);
+    // focus camera on the model's base position
+    focusOn(positions[modelId] ?? [0, 0, 0]);
+  };
+
+  const getModelPose = (modelId) => ({
+    position: normalizeVector(positions[modelId] ?? [0, 0, 0]),
+    quaternion: new THREE.Quaternion(...(rotations[modelId] ?? [0, 0, 0, 1])),
+  });
+
+  const focusOn = (pos) => {
+    if (!pos) return;
+    const v = pos.isVector3 ? pos : normalizeVector(pos);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(v);
+      controlsRef.current.update();
+    }
+  };
+
+  const applyFaceSnap = (sourcePick, targetPick) => {
+    if (!sourcePick || !targetPick) {
+      return;
+    }
+
+    if (sourcePick.modelId === targetPick.modelId) {
+      setStatus("Pick a face on a different part.");
+      return;
+    }
+
+    const sourcePose = getModelPose(sourcePick.modelId);
+    const targetPose = getModelPose(targetPick.modelId);
+
+    const sourceWorldNormal = sourcePick.localNormal.clone().applyQuaternion(sourcePose.quaternion).normalize();
+    const targetWorldNormal = targetPick.localNormal.clone().applyQuaternion(targetPose.quaternion).normalize();
+    const snapQuaternion = new THREE.Quaternion().setFromUnitVectors(sourceWorldNormal, targetWorldNormal.clone().negate());
+
+    const nextQuaternion = snapQuaternion.multiply(sourcePose.quaternion.clone()).normalize();
+    const targetWorldPoint = targetPick.localPoint.clone().applyQuaternion(targetPose.quaternion).add(targetPose.position);
+    const sourcePointAfterRotation = sourcePick.localPoint.clone().applyQuaternion(nextQuaternion);
+    const nextPosition = targetWorldPoint.sub(sourcePointAfterRotation);
+
+    setPositions((current) => ({
+      ...current,
+      [sourcePick.modelId]: [nextPosition.x, nextPosition.y, nextPosition.z],
+    }));
+    setRotations((current) => ({
+      ...current,
+      [sourcePick.modelId]: [nextQuaternion.x, nextQuaternion.y, nextQuaternion.z, nextQuaternion.w],
+    }));
+
+    setStatus(`Aligned ${sourcePick.modelId} to ${targetPick.modelId}.`);
+    // focus camera on the moved source part
+    focusOn(nextPosition);
+    clearFaceSelection();
+  };
+
+  const clearFaceSelection = () => {
+    setFaceSelection(null);
+  };
+
+  const selectSourceFace = (facePick) => {
+    setFaceSelection({
+      phase: "waiting-for-target",
+      source: facePick,
+      target: null,
+    });
+    setSelectedModelId(facePick.modelId);
+    setStatus("Select the next face to connect.");
+    // focus camera on the picked face point
+    focusOn(facePick.worldPoint ?? facePick.localPoint ?? [0, 0, 0]);
+  };
+
+  const handleFaceDoubleClick = (facePick) => {
+    if (!facePick?.modelId) {
+      return;
+    }
+
+    selectSourceFace(facePick);
+  };
+
+  const handleFaceClick = (facePick) => {
+    if (!facePick?.modelId || faceSelection?.phase !== "waiting-for-target") {
+      return;
+    }
+
+    applyFaceSnap(faceSelection.source, facePick);
   };
 
   const openInspector = (modelId) => {
@@ -308,6 +401,7 @@ export default function App() {
   };
 
   const activeInspectorMotionType = inspectorDraft?.motion?.type ?? "none";
+  const faceHintText = faceSelection?.phase === "waiting-for-target" ? "Select the next face to connect" : null;
   const motionOptions = [
     { value: "none", label: "None" },
     { value: "translation", label: "Translation" },
@@ -349,7 +443,14 @@ export default function App() {
           <ambientLight intensity={0.8} />
           <directionalLight position={[10, 10, 10]} intensity={1.5} />
 
+          {faceHintText ? (
+            <Html center>
+              <div className="face-hint">{faceHintText}</div>
+            </Html>
+          ) : null}
+
           <Suspense fallback={<Loader />}>
+            <Environment preset="city" background={false} />
             <Bounds fit clip observe margin={1.2}>
               {visibleModels.map((model, index) => (
                 <CadModel
@@ -360,16 +461,20 @@ export default function App() {
                   motion={modelSettings[model.id]?.motion ?? defaultMotion}
                   selected={selectedModelId === model.id}
                   position={positions[model.id] ?? [index * 70 - (visibleModels.length - 1) * 35, 0, 0]}
+                  quaternion={rotations[model.id] ?? [0, 0, 0, 1]}
                   onSelect={handleSelectModel}
                   onEdit={openInspector}
                   onMove={handleModelMove}
+                  onFaceDoubleClick={handleFaceDoubleClick}
+                  onFaceClick={handleFaceClick}
+                  faceSelection={faceSelection}
                 />
               ))}
             </Bounds>
           </Suspense>
 
           <axesHelper args={[10]} />
-          <OrbitControls />
+          <OrbitControls ref={controlsRef} />
         </Canvas>
 
         <Inspector

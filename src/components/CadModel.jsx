@@ -11,9 +11,14 @@ function GltfModel({ url, color = "#cfd8dc" }) {
     gltf.scene.traverse((child) => {
       if (child.isMesh) {
         if (child.material) child.material = child.material.clone();
+        // Use a PBR metal appearance (iron-like)
         child.material.color = new THREE.Color(color);
-        child.material.metalness = child.material.metalness ?? 0.15;
-        child.material.roughness = child.material.roughness ?? 0.8;
+        child.material.metalness = 0.9;
+        child.material.roughness = 0.25;
+        // boost reflectivity from environment
+        child.material.envMapIntensity = 1.0;
+        // subtle sheen
+        child.material.specularIntensity = child.material.specularIntensity ?? 0.5;
       }
     });
   }, [gltf, color]);
@@ -29,18 +34,108 @@ function GltfModel({ url, color = "#cfd8dc" }) {
   );
 }
 
-export default function CadModel({ id, url, position = [0, 0, 0], color, motion, selected, onSelect, onEdit, onMove }) {
+function getFaceTriangle(geometry, faceIndex) {
+  const positionAttribute = geometry.attributes.position;
+  const indexAttribute = geometry.index;
+  const triangleIndex = faceIndex * 3;
+
+  if (triangleIndex < 0 || triangleIndex + 2 >= (indexAttribute ? indexAttribute.count : positionAttribute.count)) {
+    return null;
+  }
+
+  const vertexA = new THREE.Vector3();
+  const vertexB = new THREE.Vector3();
+  const vertexC = new THREE.Vector3();
+
+  const readVertex = (target, attributeIndex) => {
+    target.fromBufferAttribute(positionAttribute, attributeIndex);
+  };
+
+  if (indexAttribute) {
+    readVertex(vertexA, indexAttribute.getX(triangleIndex));
+    readVertex(vertexB, indexAttribute.getX(triangleIndex + 1));
+    readVertex(vertexC, indexAttribute.getX(triangleIndex + 2));
+  } else {
+    readVertex(vertexA, triangleIndex);
+    readVertex(vertexB, triangleIndex + 1);
+    readVertex(vertexC, triangleIndex + 2);
+  }
+
+  const centroid = vertexA.clone().add(vertexB).add(vertexC).multiplyScalar(1 / 3);
+  const normal = vertexB.clone().sub(vertexA).cross(vertexC.clone().sub(vertexA)).normalize();
+
+  return { centroid, normal };
+}
+
+function FaceMarker({ point, normal }) {
+  const markerRef = useRef(null);
+
+  useEffect(() => {
+    if (!markerRef.current || !point || !normal) return;
+
+    markerRef.current.position.copy(point).add(normal.clone().normalize().multiplyScalar(0.35));
+    markerRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal.clone().normalize());
+  }, [point, normal]);
+
+  return (
+    <mesh ref={markerRef} renderOrder={20}>
+      <circleGeometry args={[2.5, 24]} />
+      <meshBasicMaterial color="#84b7ff" transparent opacity={0.65} depthWrite={false} />
+    </mesh>
+  );
+}
+
+function FaceSelectionMarker({ faceSelection, modelId }) {
+  if (!faceSelection || faceSelection.source?.modelId !== modelId) {
+    return null;
+  }
+
+  return <FaceMarker point={faceSelection.source.localPoint} normal={faceSelection.source.localNormal} />;
+}
+
+function toLocalFacePick({ modelId, rootObject, point, normal, meshName, meshUuid, faceIndex }) {
+  const localPoint = rootObject.worldToLocal(point.clone());
+  const inverseNormalMatrix = new THREE.Matrix3().getNormalMatrix(rootObject.matrixWorld);
+  const localNormal = normal.clone().applyMatrix3(inverseNormalMatrix).normalize();
+
+  return {
+    modelId,
+    meshUuid: meshUuid ?? null,
+    meshName: meshName ?? null,
+    faceIndex,
+    worldPoint: point.clone(),
+    worldNormal: normal.clone().normalize(),
+    localPoint,
+    localNormal,
+  };
+}
+
+function toWorldFaceNormal(mesh, localNormal) {
+  const worldNormal = localNormal.clone();
+  worldNormal.transformDirection(mesh.matrixWorld).normalize();
+  return worldNormal;
+}
+
+export default function CadModel({
+  id,
+  url,
+  position = [0, 0, 0],
+  quaternion = [0, 0, 0, 1],
+  color,
+  motion,
+  selected,
+  onSelect,
+  onEdit,
+  onMove,
+  onFaceDoubleClick,
+  onFaceClick,
+  faceSelection,
+}) {
   const groupRef = useRef(null);
-  const dragState = useRef({
-    dragging: false,
-    plane: new THREE.Plane(),
-    grabOffset: new THREE.Vector3(),
-    hitPoint: new THREE.Vector3(),
-  });
 
   const effectiveColor = useMemo(() => {
     const base = new THREE.Color(color ?? "#cfd8dc");
-    return selected ? base.multiplyScalar(0.45) : base;
+    return selected ? base.multiplyScalar(0.52) : base;
   }, [color, selected]);
 
   const axisVector = useMemo(() => {
@@ -53,78 +148,96 @@ export default function CadModel({ id, url, position = [0, 0, 0], color, motion,
     return motion?.direction === "negative" || motion?.direction === "anticlockwise" ? -1 : 1;
   }, [motion?.direction]);
 
-  
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
 
     const basePosition = new THREE.Vector3(...position);
+    const baseQuaternion = new THREE.Quaternion(...quaternion);
     const elapsedTime = clock.getElapsedTime();
     const animatedOffset = new THREE.Vector3();
+
+    groupRef.current.quaternion.copy(baseQuaternion);
 
     if (motion?.type === "translation") {
       const travel = (motion.amplitude ?? 20) * ((elapsedTime * (motion.speed ?? 1)) % 1);
       animatedOffset.copy(axisVector).multiplyScalar(travel * directionSign);
-      groupRef.current.rotation.set(0, 0, 0);
     } else if (motion?.type === "oscillation") {
       const travel = Math.sin(elapsedTime * (motion.speed ?? 1)) * (motion.amplitude ?? 20);
       animatedOffset.copy(axisVector).multiplyScalar(travel * directionSign);
-      groupRef.current.rotation.set(0, 0, 0);
     } else if (motion?.type === "rotation") {
-      groupRef.current.rotation.set(0, 0, 0);
       groupRef.current.rotateOnAxis(axisVector, elapsedTime * (motion.speed ?? 1) * directionSign);
-    } else {
-      groupRef.current.rotation.set(0, 0, 0);
     }
 
     groupRef.current.position.copy(basePosition.add(animatedOffset));
   });
 
-  const beginDrag = (event) => {
+  const handleDoubleClick = (event) => {
     event.stopPropagation();
     onSelect?.(id);
 
-    const objectPosition = groupRef.current?.position.clone() ?? new THREE.Vector3(...position);
-    // Lock drag to XZ plane (Y up) so movement occurs on two axes only
-    const planeNormal = new THREE.Vector3(0, 1, 0);
-    dragState.current.plane.setFromNormalAndCoplanarPoint(planeNormal, objectPosition);
-    dragState.current.dragging = true;
-    dragState.current.grabOffset.copy(event.point).sub(objectPosition);
-    dragState.current.baseY = objectPosition.y;
-
-    if (event.target?.setPointerCapture) {
-      event.target.setPointerCapture(event.pointerId);
+    const mesh = event.object;
+    if (!mesh?.isMesh || event.faceIndex == null) {
+      return;
     }
-    document.body.style.cursor = "grabbing";
+
+    mesh.updateWorldMatrix?.(true, false);
+    const faceData = getFaceTriangle(mesh.geometry, event.faceIndex);
+    if (!faceData) {
+      return;
+    }
+
+    const worldNormal = event.face?.normal ? toWorldFaceNormal(mesh, event.face.normal) : faceData.normal.clone().transformDirection(mesh.matrixWorld).normalize();
+
+    const pick = toLocalFacePick({
+      modelId: id,
+      rootObject: groupRef.current ?? mesh,
+      faceIndex: event.faceIndex,
+      point: event.point ?? faceData.centroid,
+      normal: worldNormal,
+      meshName: mesh.name ?? null,
+      meshUuid: mesh.uuid,
+    });
+
+    onFaceDoubleClick?.(pick);
   };
 
-  const moveDrag = (event) => {
-    if (!dragState.current.dragging) return;
-
+  const handleClick = (event) => {
     event.stopPropagation();
-    if (event.ray.intersectPlane(dragState.current.plane, dragState.current.hitPoint)) {
-      const nextPosition = dragState.current.hitPoint.clone().sub(dragState.current.grabOffset);
-      // keep Y locked to the original object's Y so movement is only on X and Z
-      nextPosition.y = dragState.current.baseY ?? nextPosition.y;
-      onMove?.(id, [nextPosition.x, nextPosition.y, nextPosition.z]);
+    onSelect?.(id);
+
+    if (faceSelection?.phase !== "waiting-for-target") {
+      return;
     }
-  };
 
-  const endDrag = (event) => {
-    if (!dragState.current.dragging) return;
-
-    event.stopPropagation();
-    dragState.current.dragging = false;
-    document.body.style.cursor = "default";
-
-    if (event.target?.releasePointerCapture) {
-      event.target.releasePointerCapture(event.pointerId);
+    const mesh = event.object;
+    if (!mesh?.isMesh || event.faceIndex == null) {
+      return;
     }
+
+    mesh.updateWorldMatrix?.(true, false);
+    const faceData = getFaceTriangle(mesh.geometry, event.faceIndex);
+    if (!faceData) {
+      return;
+    }
+
+    const worldNormal = event.face?.normal ? toWorldFaceNormal(mesh, event.face.normal) : faceData.normal.clone().transformDirection(mesh.matrixWorld).normalize();
+
+    const pick = toLocalFacePick({
+      modelId: id,
+      rootObject: groupRef.current ?? mesh,
+      faceIndex: event.faceIndex,
+      point: event.point ?? faceData.centroid,
+      normal: worldNormal,
+      meshName: mesh.name ?? null,
+      meshUuid: mesh.uuid,
+    });
+
+    onFaceClick?.(pick);
   };
 
   const commonHandlers = {
-    onPointerDown: beginDrag,
-    onPointerMove: moveDrag,
-    onPointerUp: endDrag,
+    onClick: handleClick,
+    onDoubleClick: handleDoubleClick,
     onContextMenu: (e) => {
       e.stopPropagation();
       if (e.preventDefault) e.preventDefault();
@@ -133,21 +246,18 @@ export default function CadModel({ id, url, position = [0, 0, 0], color, motion,
     },
     onPointerOver: (e) => {
       e.stopPropagation();
-      if (!dragState.current.dragging) {
-        document.body.style.cursor = "pointer";
-      }
+      document.body.style.cursor = "pointer";
     },
     onPointerOut: (e) => {
       e.stopPropagation();
-      if (!dragState.current.dragging) {
-        document.body.style.cursor = "default";
-      }
+      document.body.style.cursor = "default";
     },
   };
 
   return (
     <group ref={groupRef} position={position} {...commonHandlers}>
       <GltfModel url={url} color={effectiveColor} />
+      <FaceSelectionMarker faceSelection={faceSelection} modelId={id} />
     </group>
   );
 }

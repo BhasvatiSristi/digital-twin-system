@@ -20,6 +20,20 @@
 	background: #000;
 }
 
+.face-hint {
+	padding: 10px 14px;
+	border-radius: 999px;
+	background: rgba(10, 16, 28, 0.84);
+	border: 1px solid rgba(132, 183, 255, 0.35);
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+	color: #edf4ff;
+	font-size: 0.9rem;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
 .upload-panel {
 	padding: 32px 28px;
 	border-right: 1px solid rgba(255, 255, 255, 0.08);
