@@ -116,7 +116,7 @@ export default function Inspector({
         ) : null}
 
         <p className="inspector-help">
-          Double-click a part to open this box. Color changes apply to the selected part, and motion runs while the model stays visible.
+          Right-click a part to open this box. Color changes apply to the selected part, and motion runs while the model stays visible.
         </p>
 
         <div className="inspector-actions">

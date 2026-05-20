@@ -124,8 +124,9 @@ export default function CadModel({ id, url, position = [0, 0, 0], color, motion,
     onPointerDown: beginDrag,
     onPointerMove: moveDrag,
     onPointerUp: endDrag,
-    onDoubleClick: (e) => {
+    onContextMenu: (e) => {
       e.stopPropagation();
+      if (e.preventDefault) e.preventDefault();
       onSelect?.(id);
       onEdit?.(id);
     },
