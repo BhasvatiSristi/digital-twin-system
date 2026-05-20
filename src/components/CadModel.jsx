@@ -53,6 +53,7 @@ export default function CadModel({ id, url, position = [0, 0, 0], color, motion,
     return motion?.direction === "negative" || motion?.direction === "anticlockwise" ? -1 : 1;
   }, [motion?.direction]);
 
+  
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
 
