@@ -388,3 +388,36 @@
 	gap: 10px;
 	margin-top: 18px;
 }
+
+/* Inspector vertical menu */
+.inspector-tabs {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 12px 0;
+}
+
+.inspector-tab {
+	text-align: left;
+	padding: 10px 12px;
+	border-radius: 10px;
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.03);
+	color: #eef4ff;
+	cursor: pointer;
+	font-weight: 700;
+}
+
+.inspector-tab:hover {
+	background: rgba(18,26,40,0.9);
+	border-color: rgba(143,179,255,0.12);
+}
+
+.inspector-tab.active {
+	background: linear-gradient(180deg, rgba(28,41,63,0.96), rgba(17,24,37,0.96));
+	border-color: rgba(143,179,255,0.2);
+}
+
+.inspector-tabs .inspector-help {
+	margin: 8px 0 0;
+}
