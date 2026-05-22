@@ -361,6 +361,46 @@ export default function App() {
     closeInspector();
   };
   
+  const copyInspectorModel = (modelId) => {
+    const src = allModels.find((m) => m.id === modelId);
+    if (!src) return;
+
+    const newId = `${modelId}-copy-${Math.random().toString(36).slice(2, 8)}`;
+    const newName = `${src.name ?? "Model"} (copy)`;
+    const newModel = { ...src, id: newId, name: newName, isDefault: false };
+
+    setUploads((current) => [...current, newModel]);
+
+    // compute new position from current positions so we can focus after creating
+    const srcPos = positions[modelId] ?? [0, 0, 0];
+    const offsetX = 10; // place copy further away along X
+    const newPos = [srcPos[0] + offsetX, srcPos[1], srcPos[2]];
+
+    setPositions((p) => ({ ...p, [newId]: newPos }));
+
+
+    setRotations((r) => {
+      const srcRot = r[modelId] ?? [0, 0, 0, 1];
+      return { ...r, [newId]: srcRot };
+    });
+
+    setModelSettings((s) => {
+      const srcSettings = s[modelId] ?? createDefaultSettings();
+      return { ...s, [newId]: { ...srcSettings } };
+    });
+
+    setVisibleModelIds((v) => {
+      const next = new Set(v);
+      next.add(newId);
+      return next;
+    });
+
+    setStatus(`Copied ${src.name} to ${newName}.`);
+    setSelectedModelId(newId);
+    focusOn(newPos);
+    closeInspector();
+  };
+  
 
   const handleShowOnlyModel = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
@@ -483,6 +523,7 @@ export default function App() {
           updateInspectorDraft={updateInspectorDraft}
           closeInspector={closeInspector}
           saveInspector={saveInspector}
+          copyInspector={copyInspectorModel}
           allModels={allModels}
         />
       </div>

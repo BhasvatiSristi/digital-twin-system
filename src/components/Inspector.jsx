@@ -14,6 +14,7 @@ export default function Inspector({
   closeInspector,
   saveInspector,
   allModels,
+  copyInspector,
 }) {
   if (!inspectorModelId || !inspectorDraft) return null;
 
@@ -121,6 +122,7 @@ export default function Inspector({
 
         <div className="inspector-actions">
           <button type="button" className="library-action" onClick={closeInspector}>Cancel</button>
+          <button type="button" className="library-action" onClick={() => copyInspector?.(inspectorModelId)}>Copy</button>
           <button type="button" className="library-action" onClick={saveInspector}>Apply</button>
         </div>
       </div>

@@ -5,10 +5,11 @@ import * as THREE from "three";
 
 function GltfModel({ url, color = "#cfd8dc" }) {
   const gltf = useGLTF(url);
+  const scene = useMemo(() => gltf?.scene?.clone(true), [gltf]);
 
   useEffect(() => {
-    if (!gltf?.scene) return;
-    gltf.scene.traverse((child) => {
+    if (!scene) return;
+    scene.traverse((child) => {
       if (child.isMesh) {
         if (child.material) child.material = child.material.clone();
         // Use a PBR metal appearance (iron-like)
@@ -21,15 +22,15 @@ function GltfModel({ url, color = "#cfd8dc" }) {
         child.material.specularIntensity = child.material.specularIntensity ?? 0.5;
       }
     });
-  }, [gltf, color]);
+  }, [scene, color]);
 
-  if (!gltf?.scene) {
+  if (!scene) {
     return null;
   }
 
   return (
     <Center>
-      <primitive object={gltf.scene} scale={0.6} />
+      <primitive object={scene} scale={0.6} />
     </Center>
   );
 }
