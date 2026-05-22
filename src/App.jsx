@@ -72,6 +72,9 @@ export default function App() {
   // start with no models visible by default
   const [visibleModelIds, setVisibleModelIds] = useState(() => new Set());
   const [selectedModelId, setSelectedModelId] = useState(null);
+  const [selectionDraftIds, setSelectionDraftIds] = useState([]);
+  const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [selectionModeActive, setSelectionModeActive] = useState(false);
   const [faceSelection, setFaceSelection] = useState(null);
   const [status, setStatus] = useState("No model loaded.");
   const objectUrlsRef = useRef([]);
@@ -80,7 +83,10 @@ export default function App() {
   const [modelSettings, setModelSettings] = useState(() => ({}));
   const [inspectorModelId, setInspectorModelId] = useState(null);
   const [inspectorDraft, setInspectorDraft] = useState(null);
+  const [inspectorTab, setInspectorTab] = useState(null);
   const controlsRef = useRef(null);
+
+  const isSelectingParts = selectionModeActive;
 
   useEffect(() => {
     return () => {
@@ -88,6 +94,44 @@ export default function App() {
       objectUrlsRef.current = [];
     };
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key !== "Enter" || !selectionModeActive || !selectionDraftIds.length) {
+        return;
+      }
+
+      if (selectionDraftIds.length < 2) {
+        setStatus("Select at least two parts before grouping.");
+        return;
+      }
+
+      event.preventDefault();
+      setGroupMemberIds(selectionDraftIds);
+      setSelectionModeActive(false);
+      setSelectedModelId(selectionDraftIds[0]);
+      setStatus(`Grouped ${selectionDraftIds.length} parts. They now move together.`);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectionDraftIds, selectionModeActive]);
+
+  const commitSelectionGroup = () => {
+    if (!selectionModeActive || !selectionDraftIds.length) {
+      setStatus("Select at least two parts before grouping.");
+      return;
+    }
+
+    if (selectionDraftIds.length < 2) {
+      setStatus("Select at least two parts before grouping.");
+      return;
+    }
+
+    setGroupMemberIds(selectionDraftIds);
+    setSelectionModeActive(false);
+    setStatus(`Grouped ${selectionDraftIds.length} parts. They now move together.`);
+  };
 
   const convertToGlb = async (file) => {
     const extension = getFileExtension(file.name);
@@ -134,6 +178,14 @@ export default function App() {
 
   const allModels = [defaultModel, ...uploads];
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
+
+  const getMoveTargets = (modelId) => {
+    if (!groupMemberIds.includes(modelId)) {
+      return [modelId];
+    }
+
+    return groupMemberIds;
+  };
 
   const handleFileChange = async (event) => {
     const files = Array.from(event.target.files ?? []);
@@ -227,6 +279,23 @@ export default function App() {
   };
 
   const handleSelectModel = (modelId) => {
+    if (isSelectingParts) {
+      const normalizedModelId = normalizeModelId(modelId);
+
+      setSelectionDraftIds((current) => {
+        const next = current.includes(normalizedModelId)
+          ? current.filter((id) => id !== normalizedModelId)
+          : [...current, normalizedModelId];
+
+        setSelectedModelId(normalizedModelId);
+        setStatus(`${next.length} part${next.length === 1 ? "" : "s"} selected for grouping. Press Enter to group.`);
+        return next;
+      });
+
+      focusOn(positions[modelId] ?? [0, 0, 0]);
+      return;
+    }
+
     setSelectedModelId(modelId);
     const m = allModels.find((mm) => mm.id === modelId);
     if (m) setStatus(`Selected ${m.name}`);
@@ -321,6 +390,7 @@ export default function App() {
     const normalizedModelId = normalizeModelId(modelId);
     const settings = modelSettings[normalizedModelId] ?? createDefaultSettings();
     setInspectorModelId(normalizedModelId);
+    setInspectorTab(null);
     setInspectorDraft({
       color: settings.color,
       motion: { ...defaultMotion, ...settings.motion },
@@ -331,6 +401,7 @@ export default function App() {
   const closeInspector = () => {
     setInspectorModelId(null);
     setInspectorDraft(null);
+    setInspectorTab(null);
   };
 
   const updateInspectorDraft = (patch) => {
@@ -359,6 +430,42 @@ export default function App() {
     }));
     setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
     closeInspector();
+  };
+
+  const handleSelectAllParts = () => {
+    setSelectionModeActive(true);
+    setSelectionDraftIds([]);
+    setSelectedModelId(null);
+    setStatus("Click parts to select, then press Enter to group.");
+    closeInspector();
+  };
+
+  const handleInspectorTabChange = (tab) => {
+    setInspectorTab(tab);
+
+    if (tab !== "select") {
+      setSelectionDraftIds([]);
+    }
+  };
+
+  const handleMoveSelectedOrGrouped = (dx, dy, dz) => {
+    if (!selectedModelId) {
+      setStatus("No model selected to move.");
+      return;
+    }
+
+    const targets = getMoveTargets(selectedModelId);
+
+    setPositions((current) => {
+      const next = { ...current };
+
+      targets.forEach((modelId) => {
+        const cur = current[modelId] ?? [0, 0, 0];
+        next[modelId] = [cur[0] + dx, cur[1] + dy, cur[2] + dz];
+      });
+
+      return next;
+    });
   };
   
   const copyInspectorModel = (modelId) => {
@@ -423,16 +530,7 @@ export default function App() {
   const NUDGE_STEP = 5;
 
   const handleNudge = (dx, dy, dz) => {
-    if (!selectedModelId) {
-      setStatus("No model selected to move.");
-      return;
-    }
-
-    setPositions((current) => {
-      const cur = current[selectedModelId] ?? [0, 0, 0];
-      const next = [cur[0] + dx, cur[1] + dy, cur[2] + dz];
-      return { ...current, [selectedModelId]: next };
-    });
+    handleMoveSelectedOrGrouped(dx, dy, dz);
   };
 
   const handleShowAllModels = () => {
@@ -469,6 +567,11 @@ export default function App() {
 
       <div className="viewer-panel">
         <div className="axis-controls" aria-hidden={false}>
+          {selectionModeActive ? (
+            <button type="button" className="axis-group-btn" onClick={commitSelectionGroup}>
+              Group
+            </button>
+          ) : null}
           <div className="axis-grid">
             <button className="axis-btn" title="+X" onClick={() => handleNudge(NUDGE_STEP, 0, 0)}>+X</button>
             <button className="axis-btn" title="-X" onClick={() => handleNudge(-NUDGE_STEP, 0, 0)}>-X</button>
@@ -499,7 +602,7 @@ export default function App() {
                   url={model.url}
                   color={modelSettings[model.id]?.color ?? palette[index % palette.length]}
                   motion={modelSettings[model.id]?.motion ?? defaultMotion}
-                  selected={selectedModelId === model.id}
+                  selected={selectionModeActive ? selectionDraftIds.includes(model.id) || groupMemberIds.includes(model.id) : selectedModelId === model.id}
                   position={positions[model.id] ?? [index * 70 - (visibleModels.length - 1) * 35, 0, 0]}
                   quaternion={rotations[model.id] ?? [0, 0, 0, 1]}
                   onSelect={handleSelectModel}
@@ -525,6 +628,9 @@ export default function App() {
           saveInspector={saveInspector}
           copyInspector={copyInspectorModel}
           allModels={allModels}
+          activeTab={inspectorTab}
+          setActiveTab={handleInspectorTabChange}
+          onSelectAllParts={handleSelectAllParts}
         />
       </div>
     </div>

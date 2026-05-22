@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 
 const motionOptions = [
   { value: "none", label: "None" },
@@ -15,10 +15,11 @@ export default function Inspector({
   saveInspector,
   allModels,
   copyInspector,
+  activeTab,
+  setActiveTab,
+  onSelectAllParts,
 }) {
   if (!inspectorModelId || !inspectorDraft) return null;
-
-  const [activeTab, setActiveTab] = useState(null);
 
   const model = allModels.find((m) => m.id === inspectorModelId) || {};
 
@@ -56,7 +57,7 @@ export default function Inspector({
             className={`inspector-tab ${activeTab === "select" ? "active" : ""}`}
             onClick={() => setActiveTab("select")}
           >
-            Select others
+            Select all
           </button>
           <button
             type="button"
@@ -160,8 +161,11 @@ export default function Inspector({
 
         {activeTab === "select" ? (
           <div className="inspector-field">
-            <span>Select others</span>
-            <p className="inspector-help">Use the sidebar to choose other parts to inspect or select them in the viewer.</p>
+            <span>Select multiple</span>
+            <button type="button" className="library-action inspector-wide-action" onClick={onSelectAllParts}>
+              Select all parts
+            </button>
+            <p className="inspector-help">Press Enter after selecting parts to group them into one moving entity.</p>
           </div>
         ) : null}
 
