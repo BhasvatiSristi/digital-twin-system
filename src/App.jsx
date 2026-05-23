@@ -421,14 +421,25 @@ export default function App() {
       return;
     }
 
+    const groupedTargets = groupMemberIds.includes(inspectorModelId) ? groupMemberIds : [inspectorModelId];
+    const nextSettings = {
+      color: inspectorDraft.color,
+      motion: { ...defaultMotion, ...inspectorDraft.motion },
+    };
+
     setModelSettings((currentSettings) => ({
       ...currentSettings,
-      [inspectorModelId]: {
-        color: inspectorDraft.color,
-        motion: { ...defaultMotion, ...inspectorDraft.motion },
-      },
+      ...groupedTargets.reduce((accumulator, modelId) => {
+        accumulator[modelId] = nextSettings;
+        return accumulator;
+      }, {}),
     }));
-    setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
+
+    if (groupedTargets.length > 1) {
+      setStatus(`Updated motion for ${groupedTargets.length} grouped parts.`);
+    } else {
+      setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
+    }
     closeInspector();
   };
 
@@ -436,7 +447,7 @@ export default function App() {
     setSelectionModeActive(true);
     setSelectionDraftIds([]);
     setSelectedModelId(null);
-    setStatus("Click parts to select, then press Enter to group.");
+    setStatus("Click multiple parts to select, then press Enter to group.");
     closeInspector();
   };
 

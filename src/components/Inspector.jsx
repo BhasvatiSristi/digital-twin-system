@@ -57,7 +57,7 @@ export default function Inspector({
             className={`inspector-tab ${activeTab === "select" ? "active" : ""}`}
             onClick={() => setActiveTab("select")}
           >
-            Select all
+            Select multiple parts
           </button>
           <button
             type="button"
@@ -161,9 +161,9 @@ export default function Inspector({
 
         {activeTab === "select" ? (
           <div className="inspector-field">
-            <span>Select multiple</span>
+            <span>Select multiple parts</span>
             <button type="button" className="library-action inspector-wide-action" onClick={onSelectAllParts}>
-              Select all parts
+              Select all
             </button>
             <p className="inspector-help">Press Enter after selecting parts to group them into one moving entity.</p>
           </div>
