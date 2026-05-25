@@ -70,15 +70,37 @@ function vectorFromArray(arrayLike = [0, 0, 0]) {
   return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
 }
 
-function orderMembersWithRoot(memberIds, preferredRootId) {
+function scoreAttachmentRootCandidate(model) {
+  const name = String(model?.name ?? "").toLowerCase();
+  let score = 0;
+
+  if (/wheel/.test(name)) score -= 20;
+  if (/(assembly|frame|base|body|chassis|structure|upper)/.test(name)) score += 20;
+  if (/(parent|main|root)/.test(name)) score += 10;
+  if (/(child|aux|secondary)/.test(name)) score -= 5;
+
+  return score;
+}
+
+function orderMembersWithRoot(memberIds, models = []) {
   if (!memberIds?.length) {
     return [];
   }
 
   const uniqueMembers = [...new Set(memberIds.map((id) => normalizeModelId(id)))];
-  const rootId = preferredRootId && uniqueMembers.includes(preferredRootId)
-    ? preferredRootId
-    : uniqueMembers[uniqueMembers.length - 1];
+  const candidateModels = uniqueMembers.map((id) => models.find((model) => normalizeModelId(model.id) === id)).filter(Boolean);
+  const scoredCandidates = candidateModels.map((model, index) => ({
+    id: normalizeModelId(model.id),
+    score: scoreAttachmentRootCandidate(model),
+    index,
+  }));
+
+  const rootId = scoredCandidates.length
+    ? scoredCandidates.sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return left.index - right.index;
+      })[0].id
+    : uniqueMembers[0];
 
   return [rootId, ...uniqueMembers.filter((id) => id !== rootId)];
 }
@@ -130,7 +152,7 @@ export default function App() {
       }
 
       event.preventDefault();
-      const orderedSelection = orderMembersWithRoot(selectionDraftIds, selectedModelId);
+      const orderedSelection = orderMembersWithRoot(selectionDraftIds, allModels);
       if (selectionModeType === "joint") {
         setJointMemberIds(orderedSelection);
       } else {
@@ -161,7 +183,7 @@ export default function App() {
       return;
     }
 
-    const orderedSelection = orderMembersWithRoot(selectionDraftIds, selectedModelId);
+    const orderedSelection = orderMembersWithRoot(selectionDraftIds, allModels);
 
     if (mode === "joint") {
       setJointMemberIds(orderedSelection);

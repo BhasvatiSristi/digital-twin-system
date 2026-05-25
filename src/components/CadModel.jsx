@@ -134,6 +134,7 @@ export default function CadModel({
   children,
 }) {
   const groupRef = useRef(null);
+  const meshRef = useRef(null);
 
   const effectiveColor = useMemo(() => {
     const base = new THREE.Color(color ?? "#cfd8dc");
@@ -157,20 +158,63 @@ export default function CadModel({
     const baseQuaternion = new THREE.Quaternion(...quaternion);
     const elapsedTime = clock.getElapsedTime();
     const animatedOffset = new THREE.Vector3();
+    const hasChildren = Boolean(children);
 
+    // Always reset mesh local transform each frame so it's predictable
+    if (meshRef.current) {
+      meshRef.current.position.set(0, 0, 0);
+      meshRef.current.quaternion.set(0, 0, 0, 1);
+    }
+
+    // Default: outer group carries base pose
     groupRef.current.quaternion.copy(baseQuaternion);
 
     if (motion?.type === "translation") {
       const travel = (motion.amplitude ?? 20) * ((elapsedTime * (motion.speed ?? 1)) % 1);
       animatedOffset.copy(axisVector).multiplyScalar(travel * directionSign);
+
+      if (hasChildren) {
+        // apply translation to outer group so children follow
+        groupRef.current.position.copy(basePosition.clone().add(animatedOffset));
+      } else if (meshRef.current) {
+        // apply translation only to this mesh, leaving children unaffected
+        meshRef.current.position.copy(animatedOffset);
+        groupRef.current.position.copy(basePosition);
+      } else {
+        groupRef.current.position.copy(basePosition.clone().add(animatedOffset));
+      }
     } else if (motion?.type === "oscillation") {
       const travel = Math.sin(elapsedTime * (motion.speed ?? 1)) * (motion.amplitude ?? 20);
       animatedOffset.copy(axisVector).multiplyScalar(travel * directionSign);
-    } else if (motion?.type === "rotation") {
-      groupRef.current.rotateOnAxis(axisVector, elapsedTime * (motion.speed ?? 1) * directionSign);
-    }
 
-    groupRef.current.position.copy(basePosition.add(animatedOffset));
+      if (hasChildren) {
+        groupRef.current.position.copy(basePosition.clone().add(animatedOffset));
+      } else if (meshRef.current) {
+        meshRef.current.position.copy(animatedOffset);
+        groupRef.current.position.copy(basePosition);
+      } else {
+        groupRef.current.position.copy(basePosition.clone().add(animatedOffset));
+      }
+    } else if (motion?.type === "rotation") {
+      if (hasChildren) {
+        // apply rotation to outer group so children inherit the rotation
+        groupRef.current.quaternion.copy(baseQuaternion);
+        groupRef.current.rotateOnAxis(axisVector, elapsedTime * (motion.speed ?? 1) * directionSign);
+        groupRef.current.position.copy(basePosition);
+      } else if (meshRef.current) {
+        // apply rotation only to mesh so children (if any) won't rotate
+        meshRef.current.quaternion.set(0, 0, 0, 1);
+        meshRef.current.rotateOnAxis(axisVector, elapsedTime * (motion.speed ?? 1) * directionSign);
+        groupRef.current.position.copy(basePosition);
+      } else {
+        groupRef.current.quaternion.copy(baseQuaternion);
+        groupRef.current.rotateOnAxis(axisVector, elapsedTime * (motion.speed ?? 1) * directionSign);
+        groupRef.current.position.copy(basePosition);
+      }
+    } else {
+      // no motion: just keep base pose
+      groupRef.current.position.copy(basePosition);
+    }
   });
 
   const handleDoubleClick = (event) => {
@@ -258,8 +302,10 @@ export default function CadModel({
 
   return (
     <group ref={groupRef} position={position} {...commonHandlers}>
-      <GltfModel url={url} color={effectiveColor} />
-      <FaceSelectionMarker faceSelection={faceSelection} modelId={id} />
+      <group ref={meshRef}>
+        <GltfModel url={url} color={effectiveColor} />
+        <FaceSelectionMarker faceSelection={faceSelection} modelId={id} />
+      </group>
       {children}
     </group>
   );
