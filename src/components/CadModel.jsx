@@ -131,6 +131,7 @@ export default function CadModel({
   onFaceDoubleClick,
   onFaceClick,
   faceSelection,
+  children,
 }) {
   const groupRef = useRef(null);
 
@@ -259,6 +260,7 @@ export default function CadModel({
     <group ref={groupRef} position={position} {...commonHandlers}>
       <GltfModel url={url} color={effectiveColor} />
       <FaceSelectionMarker faceSelection={faceSelection} modelId={id} />
+      {children}
     </group>
   );
 }

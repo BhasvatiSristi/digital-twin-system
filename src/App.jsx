@@ -62,6 +62,27 @@ function normalizeVector(arrayLike) {
   return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
 }
 
+function quaternionFromArray(arrayLike = [0, 0, 0, 1]) {
+  return new THREE.Quaternion(arrayLike[0], arrayLike[1], arrayLike[2], arrayLike[3]);
+}
+
+function vectorFromArray(arrayLike = [0, 0, 0]) {
+  return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
+}
+
+function orderMembersWithRoot(memberIds, preferredRootId) {
+  if (!memberIds?.length) {
+    return [];
+  }
+
+  const uniqueMembers = [...new Set(memberIds.map((id) => normalizeModelId(id)))];
+  const rootId = preferredRootId && uniqueMembers.includes(preferredRootId)
+    ? preferredRootId
+    : uniqueMembers[uniqueMembers.length - 1];
+
+  return [rootId, ...uniqueMembers.filter((id) => id !== rootId)];
+}
+
 function Loader() {
   const { progress } = useProgress();
   return <Html center>{Math.round(progress)} %</Html>;
@@ -109,24 +130,25 @@ export default function App() {
       }
 
       event.preventDefault();
+      const orderedSelection = orderMembersWithRoot(selectionDraftIds, selectedModelId);
       if (selectionModeType === "joint") {
-        setJointMemberIds(selectionDraftIds);
+        setJointMemberIds(orderedSelection);
       } else {
-        setGroupMemberIds(selectionDraftIds);
+        setGroupMemberIds(orderedSelection);
       }
       setSelectionModeActive(false);
       setSelectionModeType("group");
-      setSelectedModelId(selectionDraftIds[0]);
+      setSelectedModelId(orderedSelection[0]);
       setStatus(
         selectionModeType === "joint"
-          ? `Joined ${selectionDraftIds.length} parts. They stay fixed together, but each part can keep its own motion.`
-          : `Grouped ${selectionDraftIds.length} parts. They now move together.`,
+          ? `Joined ${orderedSelection.length} parts. They stay fixed together, but each part can keep its own motion.`
+          : `Grouped ${orderedSelection.length} parts. They now move together.`,
       );
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectionDraftIds, selectionModeActive, selectionModeType]);
+  }, [selectionDraftIds, selectionModeActive, selectionModeType, selectedModelId]);
 
   const commitSelectionSelection = (mode) => {
     if (!selectionModeActive || !selectionDraftIds.length) {
@@ -139,17 +161,20 @@ export default function App() {
       return;
     }
 
+    const orderedSelection = orderMembersWithRoot(selectionDraftIds, selectedModelId);
+
     if (mode === "joint") {
-      setJointMemberIds(selectionDraftIds);
+      setJointMemberIds(orderedSelection);
     } else {
-      setGroupMemberIds(selectionDraftIds);
+      setGroupMemberIds(orderedSelection);
     }
     setSelectionModeActive(false);
     setSelectionModeType("group");
+    setSelectedModelId(orderedSelection[0]);
     setStatus(
       mode === "joint"
-        ? `Joined ${selectionDraftIds.length} parts. They stay fixed together, but each part can keep its own motion.`
-        : `Grouped ${selectionDraftIds.length} parts. They now move together.`,
+        ? `Joined ${orderedSelection.length} parts. They stay fixed together, but each part can keep its own motion.`
+        : `Grouped ${orderedSelection.length} parts. They now move together.`,
     );
   };
 
@@ -202,6 +227,105 @@ export default function App() {
 
   const allModels = [defaultModel, ...uploads];
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
+
+  const attachmentParentByChild = (() => {
+    const map = {};
+
+    if (groupMemberIds.length > 1) {
+      const rootId = groupMemberIds[0];
+      groupMemberIds.slice(1).forEach((childId) => {
+        map[childId] = rootId;
+      });
+    }
+
+    if (jointMemberIds.length > 1) {
+      const rootId = jointMemberIds[0];
+      jointMemberIds.slice(1).forEach((childId) => {
+        if (!map[childId]) {
+          map[childId] = rootId;
+        }
+      });
+    }
+
+    return map;
+  })();
+
+  const attachmentChildrenByParent = (() => {
+    const map = {};
+    Object.entries(attachmentParentByChild).forEach(([childId, parentId]) => {
+      if (!map[parentId]) {
+        map[parentId] = [];
+      }
+      map[parentId].push(childId);
+    });
+    return map;
+  })();
+
+  const getModelLocalPose = (modelId) => {
+    const worldPosition = vectorFromArray(positions[modelId] ?? [0, 0, 0]);
+    const worldQuaternion = quaternionFromArray(rotations[modelId] ?? [0, 0, 0, 1]);
+    const parentId = attachmentParentByChild[modelId];
+
+    if (!parentId) {
+      return {
+        position: [worldPosition.x, worldPosition.y, worldPosition.z],
+        quaternion: [worldQuaternion.x, worldQuaternion.y, worldQuaternion.z, worldQuaternion.w],
+      };
+    }
+
+    const parentWorldPosition = vectorFromArray(positions[parentId] ?? [0, 0, 0]);
+    const parentWorldQuaternion = quaternionFromArray(rotations[parentId] ?? [0, 0, 0, 1]);
+    const parentInverseQuaternion = parentWorldQuaternion.clone().invert();
+
+    const localPosition = worldPosition.clone().sub(parentWorldPosition).applyQuaternion(parentInverseQuaternion);
+    const localQuaternion = parentInverseQuaternion.multiply(worldQuaternion).normalize();
+
+    return {
+      position: [localPosition.x, localPosition.y, localPosition.z],
+      quaternion: [localQuaternion.x, localQuaternion.y, localQuaternion.z, localQuaternion.w],
+    };
+  };
+
+  const renderModelNode = (modelId, index = 0) => {
+    const model = allModels.find((item) => item.id === modelId);
+    if (!model || !visibleModelIds.has(modelId)) {
+      return null;
+    }
+
+    const localPose = getModelLocalPose(modelId);
+    const modelColor = modelSettings[model.id]?.color ?? palette[index % palette.length];
+    const modelMotion = modelSettings[model.id]?.motion ?? defaultMotion;
+    const children = (attachmentChildrenByParent[modelId] ?? []).map((childId, childIndex) =>
+      renderModelNode(childId, index + childIndex + 1),
+    );
+
+    return (
+      <CadModel
+        key={model.id}
+        id={model.id}
+        url={model.url}
+        color={modelColor}
+        motion={modelMotion}
+        selected={
+          selectionModeActive
+            ? selectionDraftIds.includes(model.id) || groupMemberIds.includes(model.id) || jointMemberIds.includes(model.id)
+            : selectedModelId === model.id
+        }
+        position={localPose.position}
+        quaternion={localPose.quaternion}
+        onSelect={handleSelectModel}
+        onEdit={openInspector}
+        onMove={handleModelMove}
+        onFaceDoubleClick={handleFaceDoubleClick}
+        onFaceClick={handleFaceClick}
+        faceSelection={faceSelection}
+      >
+        {children}
+      </CadModel>
+    );
+  };
+
+  const topLevelVisibleModels = visibleModels.filter((model) => !attachmentParentByChild[model.id]);
 
   const getMoveTargets = (modelId) => {
     const linkedTargets = new Set([modelId]);
@@ -660,28 +784,7 @@ export default function App() {
           <Suspense fallback={<Loader />}>
             <Environment preset="city" background={false} />
             <Bounds fit clip observe margin={1.2}>
-              {visibleModels.map((model, index) => (
-                <CadModel
-                  key={model.id}
-                  id={model.id}
-                  url={model.url}
-                  color={modelSettings[model.id]?.color ?? palette[index % palette.length]}
-                  motion={modelSettings[model.id]?.motion ?? defaultMotion}
-                  selected={
-                    selectionModeActive
-                      ? selectionDraftIds.includes(model.id) || groupMemberIds.includes(model.id) || jointMemberIds.includes(model.id)
-                      : selectedModelId === model.id
-                  }
-                  position={positions[model.id] ?? [index * 70 - (visibleModels.length - 1) * 35, 0, 0]}
-                  quaternion={rotations[model.id] ?? [0, 0, 0, 1]}
-                  onSelect={handleSelectModel}
-                  onEdit={openInspector}
-                  onMove={handleModelMove}
-                  onFaceDoubleClick={handleFaceDoubleClick}
-                  onFaceClick={handleFaceClick}
-                  faceSelection={faceSelection}
-                />
-              ))}
+              {topLevelVisibleModels.map((model, index) => renderModelNode(model.id, index))}
             </Bounds>
           </Suspense>
 
