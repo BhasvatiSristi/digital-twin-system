@@ -74,7 +74,9 @@ export default function App() {
   const [selectedModelId, setSelectedModelId] = useState(null);
   const [selectionDraftIds, setSelectionDraftIds] = useState([]);
   const [groupMemberIds, setGroupMemberIds] = useState([]);
+  const [jointMemberIds, setJointMemberIds] = useState([]);
   const [selectionModeActive, setSelectionModeActive] = useState(false);
+  const [selectionModeType, setSelectionModeType] = useState("group");
   const [faceSelection, setFaceSelection] = useState(null);
   const [status, setStatus] = useState("No model loaded.");
   const objectUrlsRef = useRef([]);
@@ -102,36 +104,58 @@ export default function App() {
       }
 
       if (selectionDraftIds.length < 2) {
-        setStatus("Select at least two parts before grouping.");
+        setStatus(`Select at least two parts before ${selectionModeType === "joint" ? "joining" : "grouping"}.`);
         return;
       }
 
       event.preventDefault();
-      setGroupMemberIds(selectionDraftIds);
+      if (selectionModeType === "joint") {
+        setJointMemberIds(selectionDraftIds);
+      } else {
+        setGroupMemberIds(selectionDraftIds);
+      }
       setSelectionModeActive(false);
+      setSelectionModeType("group");
       setSelectedModelId(selectionDraftIds[0]);
-      setStatus(`Grouped ${selectionDraftIds.length} parts. They now move together.`);
+      setStatus(
+        selectionModeType === "joint"
+          ? `Joined ${selectionDraftIds.length} parts. They stay fixed together, but each part can keep its own motion.`
+          : `Grouped ${selectionDraftIds.length} parts. They now move together.`,
+      );
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectionDraftIds, selectionModeActive]);
+  }, [selectionDraftIds, selectionModeActive, selectionModeType]);
 
-  const commitSelectionGroup = () => {
+  const commitSelectionSelection = (mode) => {
     if (!selectionModeActive || !selectionDraftIds.length) {
-      setStatus("Select at least two parts before grouping.");
+      setStatus(`Select at least two parts before ${mode === "joint" ? "joining" : "grouping"}.`);
       return;
     }
 
     if (selectionDraftIds.length < 2) {
-      setStatus("Select at least two parts before grouping.");
+      setStatus(`Select at least two parts before ${mode === "joint" ? "joining" : "grouping"}.`);
       return;
     }
 
-    setGroupMemberIds(selectionDraftIds);
+    if (mode === "joint") {
+      setJointMemberIds(selectionDraftIds);
+    } else {
+      setGroupMemberIds(selectionDraftIds);
+    }
     setSelectionModeActive(false);
-    setStatus(`Grouped ${selectionDraftIds.length} parts. They now move together.`);
+    setSelectionModeType("group");
+    setStatus(
+      mode === "joint"
+        ? `Joined ${selectionDraftIds.length} parts. They stay fixed together, but each part can keep its own motion.`
+        : `Grouped ${selectionDraftIds.length} parts. They now move together.`,
+    );
   };
+
+  const commitSelectionGroup = () => commitSelectionSelection("group");
+
+  const commitSelectionJoint = () => commitSelectionSelection("joint");
 
   const convertToGlb = async (file) => {
     const extension = getFileExtension(file.name);
@@ -180,11 +204,17 @@ export default function App() {
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
 
   const getMoveTargets = (modelId) => {
-    if (!groupMemberIds.includes(modelId)) {
-      return [modelId];
+    const linkedTargets = new Set([modelId]);
+
+    if (groupMemberIds.includes(modelId)) {
+      groupMemberIds.forEach((memberId) => linkedTargets.add(memberId));
     }
 
-    return groupMemberIds;
+    if (jointMemberIds.includes(modelId)) {
+      jointMemberIds.forEach((memberId) => linkedTargets.add(memberId));
+    }
+
+    return [...linkedTargets];
   };
 
   const handleFileChange = async (event) => {
@@ -288,7 +318,9 @@ export default function App() {
           : [...current, normalizedModelId];
 
         setSelectedModelId(normalizedModelId);
-        setStatus(`${next.length} part${next.length === 1 ? "" : "s"} selected for grouping. Press Enter to group.`);
+        setStatus(
+          `${next.length} part${next.length === 1 ? "" : "s"} selected for ${selectionModeType === "joint" ? "joining" : "grouping"}. Press Enter to confirm.`,
+        );
         return next;
       });
 
@@ -389,11 +421,13 @@ export default function App() {
   const openInspector = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
     const settings = modelSettings[normalizedModelId] ?? createDefaultSettings();
+    const isJointLinked = jointMemberIds.includes(normalizedModelId);
+    const motion = { ...defaultMotion, ...settings.motion };
     setInspectorModelId(normalizedModelId);
     setInspectorTab(null);
     setInspectorDraft({
       color: settings.color,
-      motion: { ...defaultMotion, ...settings.motion },
+      motion: isJointLinked && motion.type === "translation" ? { ...motion, type: "oscillation" } : motion,
     });
     handleSelectModel(normalizedModelId);
   };
@@ -421,21 +455,25 @@ export default function App() {
       return;
     }
 
-    const groupedTargets = groupMemberIds.includes(inspectorModelId) ? groupMemberIds : [inspectorModelId];
+    const isGroupMember = groupMemberIds.includes(inspectorModelId);
+    const isJointMember = jointMemberIds.includes(inspectorModelId);
+    const groupedTargets = isGroupMember ? groupMemberIds : [inspectorModelId];
+    const jointTargets = isJointMember ? jointMemberIds : [inspectorModelId];
+    const nextMotion = { ...defaultMotion, ...inspectorDraft.motion };
     const nextSettings = {
       color: inspectorDraft.color,
-      motion: { ...defaultMotion, ...inspectorDraft.motion },
+      motion: nextMotion,
     };
 
     setModelSettings((currentSettings) => ({
       ...currentSettings,
-      ...groupedTargets.reduce((accumulator, modelId) => {
+      ...((isJointMember && nextMotion.type === "translation") ? jointTargets : groupedTargets).reduce((accumulator, modelId) => {
         accumulator[modelId] = nextSettings;
         return accumulator;
       }, {}),
     }));
 
-    if (groupedTargets.length > 1) {
+    if ((isJointMember && nextMotion.type === "translation" ? jointTargets : groupedTargets).length > 1) {
       setStatus(`Updated motion for ${groupedTargets.length} grouped parts.`);
     } else {
       setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
@@ -445,9 +483,19 @@ export default function App() {
 
   const handleSelectAllParts = () => {
     setSelectionModeActive(true);
+    setSelectionModeType("group");
     setSelectionDraftIds([]);
     setSelectedModelId(null);
     setStatus("Click multiple parts to select, then press Enter to group.");
+    closeInspector();
+  };
+
+  const handleJoinParts = () => {
+    setSelectionModeActive(true);
+    setSelectionModeType("joint");
+    setSelectionDraftIds([]);
+    setSelectedModelId(null);
+    setStatus("Click multiple parts to select, then press Enter to join.");
     closeInspector();
   };
 
@@ -456,6 +504,8 @@ export default function App() {
 
     if (tab !== "select") {
       setSelectionDraftIds([]);
+      setSelectionModeActive(false);
+      setSelectionModeType("group");
     }
   };
 
@@ -579,8 +629,12 @@ export default function App() {
       <div className="viewer-panel">
         <div className="axis-controls" aria-hidden={false}>
           {selectionModeActive ? (
-            <button type="button" className="axis-group-btn" onClick={commitSelectionGroup}>
-              Group
+            <button
+              type="button"
+              className="axis-group-btn"
+              onClick={selectionModeType === "joint" ? commitSelectionJoint : commitSelectionGroup}
+            >
+              {selectionModeType === "joint" ? "Join" : "Group"}
             </button>
           ) : null}
           <div className="axis-grid">
@@ -613,7 +667,11 @@ export default function App() {
                   url={model.url}
                   color={modelSettings[model.id]?.color ?? palette[index % palette.length]}
                   motion={modelSettings[model.id]?.motion ?? defaultMotion}
-                  selected={selectionModeActive ? selectionDraftIds.includes(model.id) || groupMemberIds.includes(model.id) : selectedModelId === model.id}
+                  selected={
+                    selectionModeActive
+                      ? selectionDraftIds.includes(model.id) || groupMemberIds.includes(model.id) || jointMemberIds.includes(model.id)
+                      : selectedModelId === model.id
+                  }
                   position={positions[model.id] ?? [index * 70 - (visibleModels.length - 1) * 35, 0, 0]}
                   quaternion={rotations[model.id] ?? [0, 0, 0, 1]}
                   onSelect={handleSelectModel}
@@ -642,6 +700,8 @@ export default function App() {
           activeTab={inspectorTab}
           setActiveTab={handleInspectorTabChange}
           onSelectAllParts={handleSelectAllParts}
+          onJoinParts={handleJoinParts}
+          isJointLinked={inspectorModelId ? jointMemberIds.includes(inspectorModelId) : false}
         />
       </div>
     </div>

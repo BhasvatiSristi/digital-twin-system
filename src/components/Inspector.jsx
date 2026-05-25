@@ -18,10 +18,15 @@ export default function Inspector({
   activeTab,
   setActiveTab,
   onSelectAllParts,
+  onJoinParts,
+  isJointLinked,
 }) {
   if (!inspectorModelId || !inspectorDraft) return null;
 
   const model = allModels.find((m) => m.id === inspectorModelId) || {};
+  const availableMotionOptions = isJointLinked
+    ? motionOptions.filter((option) => option.value !== "translation")
+    : motionOptions;
 
   return (
     <div className="inspector-backdrop" onClick={closeInspector}>
@@ -87,13 +92,17 @@ export default function Inspector({
                 value={inspectorDraft.motion.type}
                 onChange={(event) => updateInspectorDraft({ motion: { type: event.target.value } })}
               >
-                {motionOptions.map((option) => (
+                {availableMotionOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
             </label>
+
+            {isJointLinked ? (
+              <p className="inspector-help">Joined parts support auxiliary and rotary motion. Translation is handled like a group move.</p>
+            ) : null}
 
             {inspectorDraft.motion.type !== "none" ? (
               <>
@@ -163,9 +172,12 @@ export default function Inspector({
           <div className="inspector-field">
             <span>Select multiple parts</span>
             <button type="button" className="library-action inspector-wide-action" onClick={onSelectAllParts}>
-              Select all
+              Create group
             </button>
-            <p className="inspector-help">Press Enter after selecting parts to group them into one moving entity.</p>
+            <button type="button" className="library-action inspector-wide-action" onClick={onJoinParts}>
+              Create joint
+            </button>
+            <p className="inspector-help">Groups move together. Joints stay connected, but each part can keep its own motion.</p>
           </div>
         ) : null}
 
