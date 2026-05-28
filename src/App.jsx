@@ -70,44 +70,85 @@ function vectorFromArray(arrayLike = [0, 0, 0]) {
   return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
 }
 
-function scoreAttachmentRootCandidate(model) {
-  const name = String(model?.name ?? "").toLowerCase();
-  let score = 0;
+function collectDescendantIds(modelId, childrenByParent = {}) {
+  const descendantIds = [];
+  const queue = [...(childrenByParent[modelId] ?? [])];
 
-  if (/wheel/.test(name)) score -= 20;
-  if (/(assembly|frame|base|body|chassis|structure|upper)/.test(name)) score += 20;
-  if (/(parent|main|root)/.test(name)) score += 10;
-  if (/(child|aux|secondary)/.test(name)) score -= 5;
-
-  return score;
-}
-
-function orderMembersWithRoot(memberIds, models = []) {
-  if (!memberIds?.length) {
-    return [];
+  while (queue.length) {
+    const nextId = queue.shift();
+    descendantIds.push(nextId);
+    queue.push(...(childrenByParent[nextId] ?? []));
   }
 
-  const uniqueMembers = [...new Set(memberIds.map((id) => normalizeModelId(id)))];
-  const candidateModels = uniqueMembers.map((id) => models.find((model) => normalizeModelId(model.id) === id)).filter(Boolean);
-  const scoredCandidates = candidateModels.map((model, index) => ({
-    id: normalizeModelId(model.id),
-    score: scoreAttachmentRootCandidate(model),
-    index,
-  }));
-
-  const rootId = scoredCandidates.length
-    ? scoredCandidates.sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        return left.index - right.index;
-      })[0].id
-    : uniqueMembers[0];
-
-  return [rootId, ...uniqueMembers.filter((id) => id !== rootId)];
+  return descendantIds;
 }
 
 function Loader() {
   const { progress } = useProgress();
   return <Html center>{Math.round(progress)} %</Html>;
+}
+
+function JoinDialog({ open, partIds, parentId, childId, allModels, onParentChange, onChildChange, onCancel, onConfirm }) {
+  if (!open) {
+    return null;
+  }
+
+  const options = partIds.map((partId) => {
+    const model = allModels.find((item) => item.id === partId);
+    return {
+      id: partId,
+      label: model?.name ?? partId,
+    };
+  });
+
+  return (
+    <div className="inspector-backdrop join-backdrop" onClick={onCancel}>
+      <div className="inspector-panel join-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="inspector-header">
+          <div>
+            <p className="inspector-kicker">Join parts</p>
+            <h2>Choose parent and child</h2>
+          </div>
+          <button className="inspector-close" type="button" onClick={onCancel}>
+            Close
+          </button>
+        </div>
+
+        <label className="inspector-field">
+          <span>Parent part</span>
+          <select value={parentId ?? ""} onChange={(event) => onParentChange(event.target.value)}>
+            {options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="inspector-field">
+          <span>Child part</span>
+          <select value={childId ?? ""} onChange={(event) => onChildChange(event.target.value)}>
+            {options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <p className="inspector-help">Parent motion propagates to the child. The child can still move on its own without driving the parent.</p>
+
+        <div className="inspector-actions">
+          <button type="button" className="library-action" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" className="library-action" onClick={onConfirm}>
+            Join
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function App() {
@@ -116,10 +157,9 @@ export default function App() {
   const [visibleModelIds, setVisibleModelIds] = useState(() => new Set());
   const [selectedModelId, setSelectedModelId] = useState(null);
   const [selectionDraftIds, setSelectionDraftIds] = useState([]);
-  const [groupMemberIds, setGroupMemberIds] = useState([]);
-  const [jointMemberIds, setJointMemberIds] = useState([]);
+  const [attachmentParentByChild, setAttachmentParentByChild] = useState({});
   const [selectionModeActive, setSelectionModeActive] = useState(false);
-  const [selectionModeType, setSelectionModeType] = useState("group");
+  const [joinDialog, setJoinDialog] = useState(null);
   const [faceSelection, setFaceSelection] = useState(null);
   const [status, setStatus] = useState("No model loaded.");
   const objectUrlsRef = useRef([]);
@@ -132,6 +172,87 @@ export default function App() {
   const controlsRef = useRef(null);
 
   const isSelectingParts = selectionModeActive;
+
+  const attachmentChildrenByParent = (() => {
+    const map = {};
+
+    Object.entries(attachmentParentByChild).forEach(([childId, parentId]) => {
+      if (!map[parentId]) {
+        map[parentId] = [];
+      }
+      map[parentId].push(childId);
+    });
+
+    return map;
+  })();
+
+  const openJoinDialogFromSelection = () => {
+    if (!selectionModeActive || selectionDraftIds.length < 2) {
+      setStatus("Select at least two parts before joining.");
+      return;
+    }
+
+    const uniquePartIds = [...new Set(selectionDraftIds)];
+    setJoinDialog({
+      partIds: uniquePartIds,
+      parentId: uniquePartIds[0],
+      childId: uniquePartIds[1] ?? uniquePartIds[0],
+    });
+    setStatus("Choose the parent and child, then confirm the join.");
+  };
+
+  const closeJoinDialog = () => {
+    setJoinDialog(null);
+  };
+
+  const resetJoinSelection = () => {
+    setSelectionModeActive(false);
+    setSelectionDraftIds([]);
+    setJoinDialog(null);
+  };
+
+  const applySubtreeTransform = (rootId, nextRootPosition, nextRootQuaternion) => {
+    const oldRootPosition = vectorFromArray(positions[rootId] ?? [0, 0, 0]);
+    const oldRootQuaternion = quaternionFromArray(rotations[rootId] ?? [0, 0, 0, 1]);
+    const rootInverseQuaternion = oldRootQuaternion.clone().invert();
+    const affectedIds = [rootId, ...collectDescendantIds(rootId, attachmentChildrenByParent)];
+
+    setPositions((currentPositions) => {
+      const nextPositions = { ...currentPositions };
+
+      affectedIds.forEach((modelId) => {
+        if (modelId === rootId) {
+          nextPositions[modelId] = [nextRootPosition.x, nextRootPosition.y, nextRootPosition.z];
+          return;
+        }
+
+        const currentPosition = vectorFromArray(currentPositions[modelId] ?? [0, 0, 0]);
+        const relativePosition = currentPosition.clone().sub(oldRootPosition).applyQuaternion(rootInverseQuaternion.clone());
+        const nextPosition = relativePosition.applyQuaternion(nextRootQuaternion.clone()).add(nextRootPosition);
+        nextPositions[modelId] = [nextPosition.x, nextPosition.y, nextPosition.z];
+      });
+
+      return nextPositions;
+    });
+
+    setRotations((currentRotations) => {
+      const nextRotations = { ...currentRotations };
+
+      affectedIds.forEach((modelId) => {
+        if (modelId === rootId) {
+          nextRotations[modelId] = [nextRootQuaternion.x, nextRootQuaternion.y, nextRootQuaternion.z, nextRootQuaternion.w];
+          return;
+        }
+
+        const currentQuaternion = quaternionFromArray(currentRotations[modelId] ?? [0, 0, 0, 1]);
+        const relativeQuaternion = rootInverseQuaternion.clone().multiply(currentQuaternion);
+        const nextQuaternion = nextRootQuaternion.clone().multiply(relativeQuaternion).normalize();
+        nextRotations[modelId] = [nextQuaternion.x, nextQuaternion.y, nextQuaternion.z, nextQuaternion.w];
+      });
+
+      return nextRotations;
+    });
+  };
 
   useEffect(() => {
     return () => {
@@ -146,63 +267,13 @@ export default function App() {
         return;
       }
 
-      if (selectionDraftIds.length < 2) {
-        setStatus(`Select at least two parts before ${selectionModeType === "joint" ? "joining" : "grouping"}.`);
-        return;
-      }
-
       event.preventDefault();
-      const orderedSelection = orderMembersWithRoot(selectionDraftIds, allModels);
-      if (selectionModeType === "joint") {
-        setJointMemberIds(orderedSelection);
-      } else {
-        setGroupMemberIds(orderedSelection);
-      }
-      setSelectionModeActive(false);
-      setSelectionModeType("group");
-      setSelectedModelId(orderedSelection[0]);
-      setStatus(
-        selectionModeType === "joint"
-          ? `Joined ${orderedSelection.length} parts. They stay fixed together, but each part can keep its own motion.`
-          : `Grouped ${orderedSelection.length} parts. They now move together.`,
-      );
+      openJoinDialogFromSelection();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectionDraftIds, selectionModeActive, selectionModeType, selectedModelId]);
-
-  const commitSelectionSelection = (mode) => {
-    if (!selectionModeActive || !selectionDraftIds.length) {
-      setStatus(`Select at least two parts before ${mode === "joint" ? "joining" : "grouping"}.`);
-      return;
-    }
-
-    if (selectionDraftIds.length < 2) {
-      setStatus(`Select at least two parts before ${mode === "joint" ? "joining" : "grouping"}.`);
-      return;
-    }
-
-    const orderedSelection = orderMembersWithRoot(selectionDraftIds, allModels);
-
-    if (mode === "joint") {
-      setJointMemberIds(orderedSelection);
-    } else {
-      setGroupMemberIds(orderedSelection);
-    }
-    setSelectionModeActive(false);
-    setSelectionModeType("group");
-    setSelectedModelId(orderedSelection[0]);
-    setStatus(
-      mode === "joint"
-        ? `Joined ${orderedSelection.length} parts. They stay fixed together, but each part can keep its own motion.`
-        : `Grouped ${orderedSelection.length} parts. They now move together.`,
-    );
-  };
-
-  const commitSelectionGroup = () => commitSelectionSelection("group");
-
-  const commitSelectionJoint = () => commitSelectionSelection("joint");
+  }, [selectionDraftIds, selectionModeActive]);
 
   const convertToGlb = async (file) => {
     const extension = getFileExtension(file.name);
@@ -250,39 +321,6 @@ export default function App() {
   const allModels = [defaultModel, ...uploads];
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
 
-  const attachmentParentByChild = (() => {
-    const map = {};
-
-    if (groupMemberIds.length > 1) {
-      const rootId = groupMemberIds[0];
-      groupMemberIds.slice(1).forEach((childId) => {
-        map[childId] = rootId;
-      });
-    }
-
-    if (jointMemberIds.length > 1) {
-      const rootId = jointMemberIds[0];
-      jointMemberIds.slice(1).forEach((childId) => {
-        if (!map[childId]) {
-          map[childId] = rootId;
-        }
-      });
-    }
-
-    return map;
-  })();
-
-  const attachmentChildrenByParent = (() => {
-    const map = {};
-    Object.entries(attachmentParentByChild).forEach(([childId, parentId]) => {
-      if (!map[parentId]) {
-        map[parentId] = [];
-      }
-      map[parentId].push(childId);
-    });
-    return map;
-  })();
-
   const getModelLocalPose = (modelId) => {
     const worldPosition = vectorFromArray(positions[modelId] ?? [0, 0, 0]);
     const worldQuaternion = quaternionFromArray(rotations[modelId] ?? [0, 0, 0, 1]);
@@ -329,9 +367,7 @@ export default function App() {
         color={modelColor}
         motion={modelMotion}
         selected={
-          selectionModeActive
-            ? selectionDraftIds.includes(model.id) || groupMemberIds.includes(model.id) || jointMemberIds.includes(model.id)
-            : selectedModelId === model.id
+          selectionModeActive ? selectionDraftIds.includes(model.id) : selectedModelId === model.id
         }
         position={localPose.position}
         quaternion={localPose.quaternion}
@@ -350,17 +386,7 @@ export default function App() {
   const topLevelVisibleModels = visibleModels.filter((model) => !attachmentParentByChild[model.id]);
 
   const getMoveTargets = (modelId) => {
-    const linkedTargets = new Set([modelId]);
-
-    if (groupMemberIds.includes(modelId)) {
-      groupMemberIds.forEach((memberId) => linkedTargets.add(memberId));
-    }
-
-    if (jointMemberIds.includes(modelId)) {
-      jointMemberIds.forEach((memberId) => linkedTargets.add(memberId));
-    }
-
-    return [...linkedTargets];
+    return [modelId, ...collectDescendantIds(modelId, attachmentChildrenByParent)];
   };
 
   const handleFileChange = async (event) => {
@@ -464,9 +490,7 @@ export default function App() {
           : [...current, normalizedModelId];
 
         setSelectedModelId(normalizedModelId);
-        setStatus(
-          `${next.length} part${next.length === 1 ? "" : "s"} selected for ${selectionModeType === "joint" ? "joining" : "grouping"}. Press Enter to confirm.`,
-        );
+        setStatus(`${next.length} part${next.length === 1 ? "" : "s"} selected for joining. Press Enter to choose parent and child.`);
         return next;
       });
 
@@ -517,14 +541,7 @@ export default function App() {
     const sourcePointAfterRotation = sourcePick.localPoint.clone().applyQuaternion(nextQuaternion);
     const nextPosition = targetWorldPoint.sub(sourcePointAfterRotation);
 
-    setPositions((current) => ({
-      ...current,
-      [sourcePick.modelId]: [nextPosition.x, nextPosition.y, nextPosition.z],
-    }));
-    setRotations((current) => ({
-      ...current,
-      [sourcePick.modelId]: [nextQuaternion.x, nextQuaternion.y, nextQuaternion.z, nextQuaternion.w],
-    }));
+    applySubtreeTransform(sourcePick.modelId, nextPosition, nextQuaternion);
 
     setStatus(`Aligned ${sourcePick.modelId} to ${targetPick.modelId}.`);
     // focus camera on the moved source part
@@ -567,13 +584,12 @@ export default function App() {
   const openInspector = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
     const settings = modelSettings[normalizedModelId] ?? createDefaultSettings();
-    const isJointLinked = jointMemberIds.includes(normalizedModelId);
     const motion = { ...defaultMotion, ...settings.motion };
     setInspectorModelId(normalizedModelId);
     setInspectorTab(null);
     setInspectorDraft({
       color: settings.color,
-      motion: isJointLinked && motion.type === "translation" ? { ...motion, type: "oscillation" } : motion,
+      motion,
     });
     handleSelectModel(normalizedModelId);
   };
@@ -601,10 +617,6 @@ export default function App() {
       return;
     }
 
-    const isGroupMember = groupMemberIds.includes(inspectorModelId);
-    const isJointMember = jointMemberIds.includes(inspectorModelId);
-    const groupedTargets = isGroupMember ? groupMemberIds : [inspectorModelId];
-    const jointTargets = isJointMember ? jointMemberIds : [inspectorModelId];
     const nextMotion = { ...defaultMotion, ...inspectorDraft.motion };
     const nextSettings = {
       color: inspectorDraft.color,
@@ -613,35 +625,19 @@ export default function App() {
 
     setModelSettings((currentSettings) => ({
       ...currentSettings,
-      ...((isJointMember && nextMotion.type === "translation") ? jointTargets : groupedTargets).reduce((accumulator, modelId) => {
-        accumulator[modelId] = nextSettings;
-        return accumulator;
-      }, {}),
+      [inspectorModelId]: nextSettings,
     }));
 
-    if ((isJointMember && nextMotion.type === "translation" ? jointTargets : groupedTargets).length > 1) {
-      setStatus(`Updated motion for ${groupedTargets.length} grouped parts.`);
-    } else {
-      setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
-    }
+    setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
     closeInspector();
   };
 
-  const handleSelectAllParts = () => {
+  const handleSelectJoinParts = () => {
     setSelectionModeActive(true);
-    setSelectionModeType("group");
     setSelectionDraftIds([]);
     setSelectedModelId(null);
-    setStatus("Click multiple parts to select, then press Enter to group.");
-    closeInspector();
-  };
-
-  const handleJoinParts = () => {
-    setSelectionModeActive(true);
-    setSelectionModeType("joint");
-    setSelectionDraftIds([]);
-    setSelectedModelId(null);
-    setStatus("Click multiple parts to select, then press Enter to join.");
+    setJoinDialog(null);
+    setStatus("Click two or more parts to join, then press Enter to choose parent and child.");
     closeInspector();
   };
 
@@ -651,30 +647,66 @@ export default function App() {
     if (tab !== "select") {
       setSelectionDraftIds([]);
       setSelectionModeActive(false);
-      setSelectionModeType("group");
+      setJoinDialog(null);
     }
   };
 
-  const handleMoveSelectedOrGrouped = (dx, dy, dz) => {
+  const handleJoinSelectionChange = (kind, modelId) => {
+    setJoinDialog((current) => ({
+      ...(current ?? {}),
+      [kind]: normalizeModelId(modelId),
+    }));
+  };
+
+  const confirmJoinSelection = () => {
+    if (!joinDialog) {
+      return;
+    }
+
+    const parentId = normalizeModelId(joinDialog.parentId);
+    const childId = normalizeModelId(joinDialog.childId);
+    const selectedPartIds = joinDialog.partIds ?? [];
+
+    if (!selectedPartIds.includes(parentId) || !selectedPartIds.includes(childId)) {
+      setStatus("Choose both parent and child from the selected parts.");
+      return;
+    }
+
+    if (parentId === childId) {
+      setStatus("Choose two different parts for the join.");
+      return;
+    }
+
+    const childDescendants = collectDescendantIds(childId, attachmentChildrenByParent);
+    if (childDescendants.includes(parentId)) {
+      setStatus("Choose a parent that is not inside the child subtree.");
+      return;
+    }
+
+    setAttachmentParentByChild((current) => ({
+      ...current,
+      [childId]: parentId,
+    }));
+    setSelectedModelId(parentId);
+    resetJoinSelection();
+
+    const parentName = allModels.find((model) => model.id === parentId)?.name ?? parentId;
+    const childName = allModels.find((model) => model.id === childId)?.name ?? childId;
+    setStatus(`Joined ${childName} under ${parentName}. Parent motion now carries the child.`);
+  };
+
+  const handleMoveSelectedOrAttached = (dx, dy, dz) => {
     if (!selectedModelId) {
       setStatus("No model selected to move.");
       return;
     }
 
-    const targets = getMoveTargets(selectedModelId);
+    const currentPosition = vectorFromArray(positions[selectedModelId] ?? [0, 0, 0]);
+    const nextPosition = currentPosition.clone().add(new THREE.Vector3(dx, dy, dz));
+    const currentQuaternion = quaternionFromArray(rotations[selectedModelId] ?? [0, 0, 0, 1]);
 
-    setPositions((current) => {
-      const next = { ...current };
-
-      targets.forEach((modelId) => {
-        const cur = current[modelId] ?? [0, 0, 0];
-        next[modelId] = [cur[0] + dx, cur[1] + dy, cur[2] + dz];
-      });
-
-      return next;
-    });
+    applySubtreeTransform(selectedModelId, nextPosition, currentQuaternion);
   };
-  
   const copyInspectorModel = (modelId) => {
     const src = allModels.find((m) => m.id === modelId);
     if (!src) return;
@@ -737,7 +769,7 @@ export default function App() {
   const NUDGE_STEP = 5;
 
   const handleNudge = (dx, dy, dz) => {
-    handleMoveSelectedOrGrouped(dx, dy, dz);
+    handleMoveSelectedOrAttached(dx, dy, dz);
   };
 
   const handleShowAllModels = () => {
@@ -778,9 +810,9 @@ export default function App() {
             <button
               type="button"
               className="axis-group-btn"
-              onClick={selectionModeType === "joint" ? commitSelectionJoint : commitSelectionGroup}
+              onClick={openJoinDialogFromSelection}
             >
-              {selectionModeType === "joint" ? "Join" : "Group"}
+              Join selected parts
             </button>
           ) : null}
           <div className="axis-grid">
@@ -824,9 +856,19 @@ export default function App() {
           allModels={allModels}
           activeTab={inspectorTab}
           setActiveTab={handleInspectorTabChange}
-          onSelectAllParts={handleSelectAllParts}
-          onJoinParts={handleJoinParts}
-          isJointLinked={inspectorModelId ? jointMemberIds.includes(inspectorModelId) : false}
+          onSelectJoinParts={handleSelectJoinParts}
+        />
+
+        <JoinDialog
+          open={Boolean(joinDialog)}
+          partIds={joinDialog?.partIds ?? []}
+          parentId={joinDialog?.parentId}
+          childId={joinDialog?.childId}
+          allModels={allModels}
+          onParentChange={(value) => handleJoinSelectionChange("parentId", value)}
+          onChildChange={(value) => handleJoinSelectionChange("childId", value)}
+          onCancel={closeJoinDialog}
+          onConfirm={confirmJoinSelection}
         />
       </div>
     </div>

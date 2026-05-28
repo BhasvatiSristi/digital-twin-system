@@ -325,6 +325,10 @@
 	padding: 20px;
 }
 
+.join-backdrop {
+	z-index: 1350;
+}
+
 .inspector-panel {
 	width: min(420px, 92vw);
 	max-height: min(88vh, 760px);
@@ -335,6 +339,10 @@
 	border: 1px solid rgba(143, 179, 255, 0.18);
 	box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 	color: #eef4ff;
+}
+
+.join-panel {
+	width: min(500px, 92vw);
 }
 
 .inspector-header {

@@ -17,16 +17,11 @@ export default function Inspector({
   copyInspector,
   activeTab,
   setActiveTab,
-  onSelectAllParts,
-  onJoinParts,
-  isJointLinked,
+  onSelectJoinParts,
 }) {
   if (!inspectorModelId || !inspectorDraft) return null;
 
   const model = allModels.find((m) => m.id === inspectorModelId) || {};
-  const availableMotionOptions = isJointLinked
-    ? motionOptions.filter((option) => option.value !== "translation")
-    : motionOptions;
 
   return (
     <div className="inspector-backdrop" onClick={closeInspector}>
@@ -62,7 +57,7 @@ export default function Inspector({
             className={`inspector-tab ${activeTab === "select" ? "active" : ""}`}
             onClick={() => setActiveTab("select")}
           >
-            Select multiple parts
+            Join parts
           </button>
           <button
             type="button"
@@ -92,17 +87,13 @@ export default function Inspector({
                 value={inspectorDraft.motion.type}
                 onChange={(event) => updateInspectorDraft({ motion: { type: event.target.value } })}
               >
-                {availableMotionOptions.map((option) => (
+                {motionOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
             </label>
-
-            {isJointLinked ? (
-              <p className="inspector-help">Joined parts support auxiliary and rotary motion. Translation is handled like a group move.</p>
-            ) : null}
 
             {inspectorDraft.motion.type !== "none" ? (
               <>
@@ -170,14 +161,11 @@ export default function Inspector({
 
         {activeTab === "select" ? (
           <div className="inspector-field">
-            <span>Select multiple parts</span>
-            <button type="button" className="library-action inspector-wide-action" onClick={onSelectAllParts}>
-              Create group
+            <span>Join parts</span>
+            <button type="button" className="library-action inspector-wide-action" onClick={onSelectJoinParts}>
+              Select parts to join
             </button>
-            <button type="button" className="library-action inspector-wide-action" onClick={onJoinParts}>
-              Create joint
-            </button>
-            <p className="inspector-help">Groups move together. Joints stay connected, but each part can keep its own motion.</p>
+            <p className="inspector-help">Pick two or more parts, then choose which one is the parent and which one is the child.</p>
           </div>
         ) : null}
 
