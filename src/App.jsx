@@ -12,8 +12,8 @@ const supportedExtensions = ["glb", "stl", "step"];
 const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
 const defaultModel = {
   id: "default-model",
-  name: "Default model (BWEAssembly.glb)",
-  url: "/model/BWEAssembly.glb",
+  name: "House model (3d_house.glb)",
+  url: "/model/3d_house.glb",
   isDefault: true,
 };
 
@@ -154,14 +154,14 @@ function JoinDialog({ open, partIds, parentId, childId, allModels, onParentChang
 export default function App() {
   const [uploads, setUploads] = useState([]);
   // start with no models visible by default
-  const [visibleModelIds, setVisibleModelIds] = useState(() => new Set());
+  const [visibleModelIds, setVisibleModelIds] = useState(() => new Set([defaultModel.id]));
   const [selectedModelId, setSelectedModelId] = useState(null);
   const [selectionDraftIds, setSelectionDraftIds] = useState([]);
   const [attachmentParentByChild, setAttachmentParentByChild] = useState({});
   const [selectionModeActive, setSelectionModeActive] = useState(false);
   const [joinDialog, setJoinDialog] = useState(null);
   const [faceSelection, setFaceSelection] = useState(null);
-  const [status, setStatus] = useState("No model loaded.");
+  const [status, setStatus] = useState("House model loaded.");
   const objectUrlsRef = useRef([]);
   const [positions, setPositions] = useState({});
   const [rotations, setRotations] = useState({});
