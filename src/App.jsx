@@ -632,6 +632,50 @@ export default function App() {
     closeInspector();
   };
 
+  const parseMoveCoordinates = (input) => {
+    if (typeof input !== "string") {
+      return null;
+    }
+
+    const values = input
+      .split(/[,\s]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => Number(value));
+
+    if (values.length !== 3 || values.some((value) => Number.isNaN(value))) {
+      return null;
+    }
+
+    return values;
+  };
+
+  const handleInspectorMove = (modelId = inspectorModelId) => {
+    const normalizedModelId = normalizeModelId(modelId);
+    const currentPosition = vectorFromArray(positions[normalizedModelId] ?? [0, 0, 0]);
+    const currentLabel = `${currentPosition.x}, ${currentPosition.y}, ${currentPosition.z}`;
+    const input = window.prompt("Enter target coordinates as x, y, z", currentLabel);
+
+    if (input == null) {
+      setStatus("Move canceled.");
+      return;
+    }
+
+    const parsedCoordinates = parseMoveCoordinates(input);
+    if (!parsedCoordinates) {
+      setStatus("Enter coordinates in the form x, y, z.");
+      return;
+    }
+
+    const nextPosition = new THREE.Vector3(parsedCoordinates[0], parsedCoordinates[1], parsedCoordinates[2]);
+    const currentQuaternion = quaternionFromArray(rotations[normalizedModelId] ?? [0, 0, 0, 1]);
+
+    applySubtreeTransform(normalizedModelId, nextPosition, currentQuaternion);
+    setSelectedModelId(normalizedModelId);
+    setStatus(`Moved ${allModels.find((model) => model.id === normalizedModelId)?.name ?? "model"} to ${parsedCoordinates.join(", ")}.`);
+    focusOn(nextPosition);
+  };
+
   const handleSelectJoinParts = () => {
     setSelectionModeActive(true);
     setSelectionDraftIds([]);
@@ -857,6 +901,7 @@ export default function App() {
           activeTab={inspectorTab}
           setActiveTab={handleInspectorTabChange}
           onSelectJoinParts={handleSelectJoinParts}
+          onMovePart={handleInspectorMove}
         />
 
         <JoinDialog

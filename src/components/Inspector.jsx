@@ -18,6 +18,7 @@ export default function Inspector({
   activeTab,
   setActiveTab,
   onSelectJoinParts,
+  onMovePart,
 }) {
   if (!inspectorModelId || !inspectorDraft) return null;
 
@@ -65,6 +66,16 @@ export default function Inspector({
             onClick={() => setActiveTab("motion")}
           >
             Add motion
+          </button>
+          <button
+            type="button"
+            className={`inspector-tab ${activeTab === "move" ? "active" : ""}`}
+            onClick={() => {
+              setActiveTab("move");
+              onMovePart?.(inspectorModelId);
+            }}
+          >
+            Move
           </button>
         </div>
 
@@ -166,6 +177,16 @@ export default function Inspector({
               Select parts to join
             </button>
             <p className="inspector-help">Pick two or more parts, then choose which one is the parent and which one is the child.</p>
+          </div>
+        ) : null}
+
+        {activeTab === "move" ? (
+          <div className="inspector-field">
+            <span>Move part</span>
+            <p className="inspector-help">Enter a target position as x, y, z. The part will move there immediately.</p>
+            <button type="button" className="library-action inspector-wide-action" onClick={() => onMovePart?.(inspectorModelId)}>
+              Enter coordinates
+            </button>
           </div>
         ) : null}
 
