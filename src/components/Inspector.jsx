@@ -92,6 +92,8 @@ export default function Inspector({
 
         {activeTab === "motion" ? (
           <>
+            <p className="inspector-subtitle">Please enter the params in metric unit system.</p>
+
             <label className="inspector-field">
               <span>Motion type</span>
               <select
@@ -141,11 +143,10 @@ export default function Inspector({
                 </label>
 
                 <label className="inspector-field">
-                  <span>Speed</span>
+                  <span>Speed (m/s)</span>
                   <input
-                    type="range"
-                    min="0.1"
-                    max="5"
+                    type="number"
+                    min="0"
                     step="0.1"
                     value={inspectorDraft.motion.speed}
                     onChange={(event) => updateInspectorDraft({ motion: { speed: Number(event.target.value) } })}
@@ -154,12 +155,11 @@ export default function Inspector({
 
                 {inspectorDraft.motion.type !== "rotation" ? (
                   <label className="inspector-field">
-                    <span>Amplitude</span>
+                    <span>Amplitude (m)</span>
                     <input
-                      type="range"
-                      min="1"
-                      max="50"
-                      step="1"
+                      type="number"
+                      min="0"
+                      step="0.1"
                       value={inspectorDraft.motion.amplitude}
                       onChange={(event) => updateInspectorDraft({ motion: { amplitude: Number(event.target.value) } })}
                     />
