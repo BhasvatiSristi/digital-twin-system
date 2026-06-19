@@ -7,6 +7,7 @@ import "./App.css";
 import CadModel from "./components/CadModel";
 import Sidebar from "./components/Sidebar";
 import Inspector from "./components/Inspector";
+import PartInfoPopup from "./components/PartInfoPopup";
 
 const supportedExtensions = ["glb", "stl", "step"];
 const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
@@ -30,14 +31,118 @@ const defaultMotion = {
   type: "none",
   axis: "x",
   direction: "positive",
-  speed: 1,
-  amplitude: 20,
+  speed: { value: 1, unit: "m/s" },
+  amplitude: { value: 20, unit: "m" },
 };
+
+function createMotionParameter(value, unit) {
+  return { value, unit };
+}
+
+function getSpeedUnitOptions(type) {
+  if (type === "rotation") {
+    return ["rpm", "rps", "deg/s", "rad/s"];
+  }
+
+  if (type === "oscillation") {
+    return ["m/s", "cm/s", "mm/s"];
+  }
+
+  return ["m/s", "cm/s", "mm/s"];
+}
+
+function getAmplitudeUnitOptions() {
+  return ["m", "cm", "mm"];
+}
+
+function normalizeMotionParameter(parameter, fallbackValue, fallbackUnit, allowedUnits) {
+  if (parameter && typeof parameter === "object" && !Array.isArray(parameter)) {
+    const nextValue = Number(parameter.value);
+    return {
+      value: Number.isFinite(nextValue) ? nextValue : fallbackValue,
+      unit: allowedUnits.includes(parameter.unit) ? parameter.unit : fallbackUnit,
+    };
+  }
+
+  const nextValue = Number(parameter);
+  return createMotionParameter(Number.isFinite(nextValue) ? nextValue : fallbackValue, fallbackUnit);
+}
+
+function normalizeMotionDraft(motion = {}) {
+  const type = motion.type ?? defaultMotion.type;
+  const speedUnit = type === "rotation" ? "rpm" : "m/s";
+
+  return {
+    ...defaultMotion,
+    ...motion,
+    type,
+    axis: motion.axis ?? defaultMotion.axis,
+    direction: motion.direction ?? defaultMotion.direction,
+    speed: normalizeMotionParameter(motion.speed, defaultMotion.speed.value, speedUnit, getSpeedUnitOptions(type)),
+    amplitude: normalizeMotionParameter(motion.amplitude, defaultMotion.amplitude.value, "m", getAmplitudeUnitOptions()),
+  };
+}
+
+function convertSpeedToBaseUnits(speed, type) {
+  const value = Number(speed?.value ?? speed ?? 0);
+
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  const unit = speed?.unit ?? "m/s";
+
+  if (type === "translation") {
+    if (unit === "cm/s") return value / 100;
+    if (unit === "mm/s") return value / 1000;
+    return value;
+  }
+
+  if (unit === "deg/s") return (value * Math.PI) / 180;
+  if (unit === "rpm") return (value * 2 * Math.PI) / 60;
+  if (unit === "rps") return value * 2 * Math.PI;
+  return value;
+}
+
+function convertAmplitudeToBaseUnits(amplitude) {
+  const value = Number(amplitude?.value ?? amplitude ?? 0);
+
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  const unit = amplitude?.unit ?? "m";
+
+  if (unit === "cm") return value / 100;
+  if (unit === "mm") return value / 1000;
+  return value;
+}
+
+function toRuntimeMotion(motion = {}) {
+  const normalized = normalizeMotionDraft(motion);
+
+  if (normalized.type === "translation") {
+    const amplitude = convertAmplitudeToBaseUnits(normalized.amplitude);
+    const speed = convertSpeedToBaseUnits(normalized.speed, normalized.type);
+
+    return {
+      ...normalized,
+      speed: amplitude > 0 ? speed / amplitude : 0,
+      amplitude,
+    };
+  }
+
+  return {
+    ...normalized,
+    speed: convertSpeedToBaseUnits(normalized.speed, normalized.type),
+    amplitude: convertAmplitudeToBaseUnits(normalized.amplitude),
+  };
+}
 
 function createDefaultSettings(index = 0) {
   return {
     color: palette[index % palette.length],
-    motion: { ...defaultMotion },
+    motion: normalizeMotionDraft(),
   };
 }
 
@@ -169,6 +274,7 @@ export default function App() {
   const [inspectorModelId, setInspectorModelId] = useState(null);
   const [inspectorDraft, setInspectorDraft] = useState(null);
   const [inspectorTab, setInspectorTab] = useState(null);
+  const [partPopupModelId, setPartPopupModelId] = useState(null);
   const controlsRef = useRef(null);
 
   const isSelectingParts = selectionModeActive;
@@ -354,7 +460,7 @@ export default function App() {
 
     const localPose = getModelLocalPose(modelId);
     const modelColor = modelSettings[model.id]?.color ?? palette[index % palette.length];
-    const modelMotion = modelSettings[model.id]?.motion ?? defaultMotion;
+    const modelMotion = toRuntimeMotion(modelSettings[model.id]?.motion ?? defaultMotion);
     const children = (attachmentChildrenByParent[modelId] ?? []).map((childId, childIndex) =>
       renderModelNode(childId, index + childIndex + 1),
     );
@@ -372,6 +478,7 @@ export default function App() {
         position={localPose.position}
         quaternion={localPose.quaternion}
         onSelect={handleSelectModel}
+        onTap={setPartPopupModelId}
         onEdit={openInspector}
         onMove={handleModelMove}
         onFaceDoubleClick={handleFaceDoubleClick}
@@ -499,6 +606,7 @@ export default function App() {
     }
 
     setSelectedModelId(modelId);
+    setPartPopupModelId(null);
     const m = allModels.find((mm) => mm.id === modelId);
     if (m) setStatus(`Selected ${m.name}`);
     // focus camera on the model's base position
@@ -570,6 +678,7 @@ export default function App() {
       return;
     }
 
+    setPartPopupModelId(null);
     selectSourceFace(facePick);
   };
 
@@ -584,12 +693,12 @@ export default function App() {
   const openInspector = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
     const settings = modelSettings[normalizedModelId] ?? createDefaultSettings();
-    const motion = { ...defaultMotion, ...settings.motion };
+    setPartPopupModelId(null);
     setInspectorModelId(normalizedModelId);
     setInspectorTab(null);
     setInspectorDraft({
       color: settings.color,
-      motion,
+      motion: normalizeMotionDraft(settings.motion),
     });
     handleSelectModel(normalizedModelId);
   };
@@ -600,14 +709,15 @@ export default function App() {
     setInspectorTab(null);
   };
 
+  const closePartPopup = () => {
+    setPartPopupModelId(null);
+  };
+
   const updateInspectorDraft = (patch) => {
     setInspectorDraft((current) => ({
       ...current,
       ...patch,
-      motion: {
-        ...(current?.motion ?? defaultMotion),
-        ...(patch.motion ?? {}),
-      },
+      motion: patch.motion ? normalizeMotionDraft({ ...(current?.motion ?? defaultMotion), ...patch.motion }) : current?.motion ?? defaultMotion,
     }));
   };
 
@@ -617,7 +727,7 @@ export default function App() {
       return;
     }
 
-    const nextMotion = { ...defaultMotion, ...inspectorDraft.motion };
+    const nextMotion = normalizeMotionDraft(inspectorDraft.motion ?? defaultMotion);
     const nextSettings = {
       color: inspectorDraft.color,
       motion: nextMotion,
@@ -823,6 +933,27 @@ export default function App() {
 
   const activeInspectorMotionType = inspectorDraft?.motion?.type ?? "none";
   const faceHintText = faceSelection?.phase === "waiting-for-target" ? "Select the next face to connect" : null;
+  const selectedPart = partPopupModelId ? allModels.find((model) => model.id === partPopupModelId) : null;
+  const selectedPartSettings = partPopupModelId ? modelSettings[partPopupModelId] ?? createDefaultSettings() : null;
+  const selectedPartPose = partPopupModelId ? getModelLocalPose(partPopupModelId) : null;
+  const selectedPartParentId = partPopupModelId ? attachmentParentByChild[partPopupModelId] : null;
+  const selectedPartChildren = partPopupModelId ? attachmentChildrenByParent[partPopupModelId] ?? [] : [];
+  const selectedPartPopup = selectedPart
+    ? {
+        id: selectedPart.id,
+        name: selectedPart.name ?? selectedPart.id,
+        color: selectedPartSettings?.color ?? "#cfd8dc",
+        motion: selectedPartSettings?.motion ?? defaultMotion,
+        position: selectedPartPose?.position ?? [0, 0, 0],
+        quaternion: selectedPartPose?.quaternion ?? [0, 0, 0, 1],
+        visible: visibleModelIds.has(selectedPart.id),
+        isDefault: Boolean(selectedPart.isDefault),
+        sourceLabel: selectedPart.convertedFrom ? `${selectedPart.convertedFrom.toUpperCase()} → GLB` : null,
+        parentName: selectedPartParentId ? allModels.find((model) => model.id === selectedPartParentId)?.name ?? selectedPartParentId : null,
+        childrenCount: selectedPartChildren.length,
+        childrenNames: selectedPartChildren.map((childId) => allModels.find((model) => model.id === childId)?.name ?? childId),
+      }
+    : null;
   const motionOptions = [
     { value: "none", label: "None" },
     { value: "translation", label: "Translation" },
@@ -902,6 +1033,15 @@ export default function App() {
           setActiveTab={handleInspectorTabChange}
           onSelectJoinParts={handleSelectJoinParts}
           onMovePart={handleInspectorMove}
+        />
+
+        <PartInfoPopup
+          part={selectedPartPopup}
+          onClose={closePartPopup}
+          onEdit={(modelId) => {
+            closePartPopup();
+            openInspector(modelId);
+          }}
         />
 
         <JoinDialog

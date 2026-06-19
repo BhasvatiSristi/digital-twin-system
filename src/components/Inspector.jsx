@@ -7,6 +7,14 @@ const motionOptions = [
   { value: "rotation", label: "Rotary" },
 ];
 
+const speedUnitOptions = {
+  translation: ["m/s", "cm/s", "mm/s"],
+  oscillation: ["m/s", "cm/s", "mm/s"],
+  rotation: ["rpm", "rps", "deg/s", "rad/s"],
+};
+
+const amplitudeUnitOptions = ["m", "cm", "mm"];
+
 export default function Inspector({
   inspectorModelId,
   inspectorDraft,
@@ -23,6 +31,7 @@ export default function Inspector({
   if (!inspectorModelId || !inspectorDraft) return null;
 
   const model = allModels.find((m) => m.id === inspectorModelId) || {};
+  const currentSpeedUnits = speedUnitOptions[inspectorDraft.motion.type] ?? speedUnitOptions.rotation;
 
   return (
     <div className="inspector-backdrop" onClick={closeInspector}>
@@ -143,26 +152,50 @@ export default function Inspector({
                 </label>
 
                 <label className="inspector-field">
-                  <span>Speed (m/s)</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    value={inspectorDraft.motion.speed}
-                    onChange={(event) => updateInspectorDraft({ motion: { speed: Number(event.target.value) } })}
-                  />
-                </label>
-
-                {inspectorDraft.motion.type !== "rotation" ? (
-                  <label className="inspector-field">
-                    <span>Amplitude (m)</span>
+                  <span>Speed</span>
+                  <div className="inspector-inline-row">
                     <input
                       type="number"
                       min="0"
                       step="0.1"
-                      value={inspectorDraft.motion.amplitude}
-                      onChange={(event) => updateInspectorDraft({ motion: { amplitude: Number(event.target.value) } })}
+                      value={inspectorDraft.motion.speed.value}
+                      onChange={(event) => updateInspectorDraft({ motion: { speed: { value: Number(event.target.value) } } })}
                     />
+                    <select
+                      value={inspectorDraft.motion.speed.unit}
+                      onChange={(event) => updateInspectorDraft({ motion: { speed: { unit: event.target.value } } })}
+                    >
+                      {currentSpeedUnits.map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </label>
+
+                {inspectorDraft.motion.type !== "rotation" ? (
+                  <label className="inspector-field">
+                    <span>Amplitude</span>
+                    <div className="inspector-inline-row">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={inspectorDraft.motion.amplitude.value}
+                        onChange={(event) => updateInspectorDraft({ motion: { amplitude: { value: Number(event.target.value) } } })}
+                      />
+                      <select
+                        value={inspectorDraft.motion.amplitude.unit}
+                        onChange={(event) => updateInspectorDraft({ motion: { amplitude: { unit: event.target.value } } })}
+                      >
+                        {amplitudeUnitOptions.map((unit) => (
+                          <option key={unit} value={unit}>
+                            {unit}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </label>
                 ) : null}
               </>

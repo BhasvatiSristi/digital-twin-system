@@ -126,6 +126,7 @@ export default function CadModel({
   motion,
   selected,
   onSelect,
+  onTap,
   onEdit,
   onMove,
   onFaceDoubleClick,
@@ -252,6 +253,7 @@ export default function CadModel({
     onSelect?.(id);
 
     if (faceSelection?.phase !== "waiting-for-target") {
+      onTap?.(id);
       return;
     }
 
