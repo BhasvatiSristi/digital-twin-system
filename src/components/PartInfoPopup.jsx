@@ -23,6 +23,14 @@ function formatMotion(motion = {}) {
   return pieces.join(" • ");
 }
 
+function formatParameter(parameter = {}) {
+  const name = parameter.name?.trim();
+  const value = parameter.value?.trim();
+  const unit = parameter.unit?.trim();
+
+  return [name || "Parameter", value || "—", unit || ""].filter(Boolean).join(" • ");
+}
+
 export default function PartInfoPopup({ part, onClose, onEdit }) {
   if (!part) {
     return null;
@@ -82,6 +90,20 @@ export default function PartInfoPopup({ part, onClose, onEdit }) {
           <div className="part-popup-list">
             <span>Child parts</span>
             <p>{part.childrenNames.join(", ")}</p>
+          </div>
+        ) : null}
+
+        {part.parameters?.length ? (
+          <div className="part-popup-list part-popup-parameters">
+            <span>Parameters</span>
+            <div className="part-popup-parameter-list">
+              {part.parameters.map((parameter, index) => (
+                <div className="part-popup-parameter-row" key={`${parameter.name ?? "parameter"}-${index}`}>
+                  <strong>{parameter.name?.trim() || `Parameter ${index + 1}`}</strong>
+                  <p>{formatParameter(parameter)}</p>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 

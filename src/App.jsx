@@ -39,6 +39,10 @@ function createMotionParameter(value, unit) {
   return { value, unit };
 }
 
+function createParameterDraft(name = "", value = "", unit = "") {
+  return { name, value, unit };
+}
+
 function getSpeedUnitOptions(type) {
   if (type === "rotation") {
     return ["rpm", "rps", "deg/s", "rad/s"];
@@ -81,6 +85,30 @@ function normalizeMotionDraft(motion = {}) {
     speed: normalizeMotionParameter(motion.speed, defaultMotion.speed.value, speedUnit, getSpeedUnitOptions(type)),
     amplitude: normalizeMotionParameter(motion.amplitude, defaultMotion.amplitude.value, "m", getAmplitudeUnitOptions()),
   };
+}
+
+function normalizeParameterDraft(parameter = {}) {
+  if (parameter && typeof parameter === "object" && !Array.isArray(parameter)) {
+    return {
+      name: String(parameter.name ?? ""),
+      value: String(parameter.value ?? ""),
+      unit: String(parameter.unit ?? ""),
+    };
+  }
+
+  return createParameterDraft();
+}
+
+function normalizeParameterDrafts(parameters = []) {
+  if (!Array.isArray(parameters)) {
+    return [];
+  }
+
+  return parameters.map((parameter) => normalizeParameterDraft(parameter));
+}
+
+function compactParameterDrafts(parameters = []) {
+  return normalizeParameterDrafts(parameters).filter((parameter) => parameter.name || parameter.value || parameter.unit);
 }
 
 function convertSpeedToBaseUnits(speed, type) {
@@ -143,6 +171,7 @@ function createDefaultSettings(index = 0) {
   return {
     color: palette[index % palette.length],
     motion: normalizeMotionDraft(),
+    parameters: [],
   };
 }
 
@@ -699,6 +728,7 @@ export default function App() {
     setInspectorDraft({
       color: settings.color,
       motion: normalizeMotionDraft(settings.motion),
+      parameters: normalizeParameterDrafts(settings.parameters),
     });
     handleSelectModel(normalizedModelId);
   };
@@ -714,10 +744,13 @@ export default function App() {
   };
 
   const updateInspectorDraft = (patch) => {
+    const hasParameters = Object.prototype.hasOwnProperty.call(patch, "parameters");
+
     setInspectorDraft((current) => ({
       ...current,
       ...patch,
       motion: patch.motion ? normalizeMotionDraft({ ...(current?.motion ?? defaultMotion), ...patch.motion }) : current?.motion ?? defaultMotion,
+      parameters: hasParameters ? normalizeParameterDrafts(patch.parameters) : current?.parameters ?? [],
     }));
   };
 
@@ -731,6 +764,7 @@ export default function App() {
     const nextSettings = {
       color: inspectorDraft.color,
       motion: nextMotion,
+      parameters: compactParameterDrafts(inspectorDraft.parameters ?? []),
     };
 
     setModelSettings((currentSettings) => ({
@@ -944,6 +978,7 @@ export default function App() {
         name: selectedPart.name ?? selectedPart.id,
         color: selectedPartSettings?.color ?? "#cfd8dc",
         motion: selectedPartSettings?.motion ?? defaultMotion,
+        parameters: selectedPartSettings?.parameters ?? [],
         position: selectedPartPose?.position ?? [0, 0, 0],
         quaternion: selectedPartPose?.quaternion ?? [0, 0, 0, 1],
         visible: visibleModelIds.has(selectedPart.id),

@@ -337,6 +337,15 @@
 	z-index: 1350;
 }
 
+.inspector-parameters-backdrop {
+	z-index: 1400;
+}
+
+.inspector-parameters-panel {
+	width: min(720px, 94vw);
+	max-height: min(88vh, 760px);
+}
+
 .part-popup-backdrop {
 	position: fixed;
 	inset: 0;
@@ -434,6 +443,29 @@
 	line-height: 1.45;
 	color: #f3f7ff;
 	word-break: break-word;
+}
+
+.part-popup-parameter-list {
+	display: grid;
+	gap: 8px;
+}
+
+.part-popup-parameter-row {
+	display: grid;
+	gap: 4px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.03);
+	border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.part-popup-parameter-row strong {
+	font-size: 0.92rem;
+}
+
+.part-popup-parameter-row p {
+	font-size: 0.84rem;
+	color: rgba(243, 247, 255, 0.82);
 }
 
 .part-popup-span-2 {
@@ -564,6 +596,68 @@
 	font-size: 0.85rem;
 	line-height: 1.5;
 	color: rgba(229, 238, 249, 0.72);
+}
+
+.inspector-parameters {
+	display: grid;
+	gap: 10px;
+	margin-top: 14px;
+	padding-top: 14px;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inspector-parameters-header span {
+	display: block;
+	font-size: 0.9rem;
+	font-weight: 700;
+	color: rgba(229, 238, 249, 0.86);
+}
+
+.inspector-parameter-list {
+	display: grid;
+	gap: 8px;
+}
+
+.inspector-parameter-row {
+	display: grid;
+	grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 0.9fr) auto;
+	gap: 8px;
+	align-items: center;
+}
+
+.inspector-parameter-row input {
+	min-width: 0;
+	padding: 10px 12px;
+	border-radius: 12px;
+	border: 1px solid rgba(255,255,255,0.08);
+	background: #ffffff;
+	color: #000000;
+	font: inherit;
+}
+
+.inspector-parameter-remove {
+	width: 38px;
+	height: 38px;
+	border-radius: 12px;
+	border: 1px solid rgba(255,255,255,0.08);
+	background: rgba(255, 104, 104, 0.14);
+	color: #ffd3d3;
+	font-weight: 800;
+	cursor: pointer;
+}
+
+.inspector-parameter-remove:hover {
+	background: rgba(255, 104, 104, 0.24);
+}
+
+.inspector-parameter-new {
+	justify-self: end;
+}
+
+.inspector-parameter-actions {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: 16px;
 }
 
 .inspector-wide-action {

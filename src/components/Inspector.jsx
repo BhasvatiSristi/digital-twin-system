@@ -1,4 +1,5 @@
 import React from "react";
+import InspectorParameters from "./InspectorParameters";
 
 const motionOptions = [
   { value: "none", label: "None" },
@@ -75,6 +76,13 @@ export default function Inspector({
             onClick={() => setActiveTab("motion")}
           >
             Add motion
+          </button>
+          <button
+            type="button"
+            className={`inspector-tab ${activeTab === "parameters" ? "active" : ""}`}
+            onClick={() => setActiveTab("parameters")}
+          >
+            Add parameters
           </button>
           <button
             type="button"
@@ -201,6 +209,15 @@ export default function Inspector({
               </>
             ) : null}
           </>
+        ) : null}
+
+        {activeTab === "parameters" ? (
+          <InspectorParameters
+            open={activeTab === "parameters"}
+            parameters={inspectorDraft.parameters ?? []}
+            onChange={(parameters) => updateInspectorDraft({ parameters })}
+            onClose={() => setActiveTab("motion")}
+          />
         ) : null}
 
         {activeTab === "select" ? (
