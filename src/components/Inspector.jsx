@@ -4,8 +4,8 @@ import InspectorParameters from "./InspectorParameters";
 const motionOptions = [
   { value: "none", label: "None" },
   { value: "translation", label: "Translation" },
-  { value: "oscillation", label: "Auxilatory" },
-  { value: "rotation", label: "Rotary" },
+  { value: "oscillation", label: "Oscillation" },
+  { value: "rotation", label: "Rotation" },
 ];
 
 const speedUnitOptions = {
