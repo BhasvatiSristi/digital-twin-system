@@ -3,7 +3,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
-function GltfModel({ url, color = "#cfd8dc" }) {
+function GltfModel({ url, color = "#cfd8dc",blink }) {
   const gltf = useGLTF(url);
   const scene = useMemo(() => gltf?.scene?.clone(true), [gltf]);
 
@@ -13,7 +13,9 @@ function GltfModel({ url, color = "#cfd8dc" }) {
       if (child.isMesh) {
         if (child.material) child.material = child.material.clone();
         // Use a PBR metal appearance (iron-like)
-        child.material.color = new THREE.Color(color);
+        child.scale.setScalar(
+    blink.current ? 1 : 0.7
+);
         child.material.metalness = 0.9;
         child.material.roughness = 0.25;
         // boost reflectivity from environment
@@ -22,7 +24,7 @@ function GltfModel({ url, color = "#cfd8dc" }) {
         child.material.specularIntensity = child.material.specularIntensity ?? 0.5;
       }
     });
-  }, [scene, color]);
+  }, [scene, color, blink]);
 
   if (!scene) {
     return null;
@@ -123,6 +125,7 @@ export default function CadModel({
   position = [0, 0, 0],
   quaternion = [0, 0, 0, 1],
   color,
+  isCritical=false,
   motion,
   selected,
   onSelect,
@@ -136,6 +139,7 @@ export default function CadModel({
 }) {
   const groupRef = useRef(null);
   const meshRef = useRef(null);
+  const blinkState = useRef(false);
 
   const effectiveColor = useMemo(() => {
     const base = new THREE.Color(color ?? "#cfd8dc");
@@ -215,6 +219,30 @@ export default function CadModel({
     } else {
       // no motion: just keep base pose
       groupRef.current.position.copy(basePosition);
+    }
+
+    if (meshRef.current) {
+
+      blinkState.current =
+        isCritical &&
+        Math.floor(clock.getElapsedTime() * 2) % 2 === 0;
+
+        console.log(
+            "Critical:",
+            isCritical,
+            "Blink:",
+            blinkState.current
+        );
+
+      meshRef.current.traverse((child) => {
+        if (!child.isMesh) return;
+
+        child.material.color.set(
+          blinkState.current
+            ? "#ff6b6b"
+            : color
+        );
+      });
     }
   });
 
@@ -309,7 +337,7 @@ export default function CadModel({
   return (
     <group ref={groupRef} position={position} {...commonHandlers}>
       <group ref={meshRef}>
-        <GltfModel url={url} color={effectiveColor} />
+        <GltfModel url={url} color={effectiveColor} blink={blinkState.current}/>
         <FaceSelectionMarker faceSelection={faceSelection} modelId={id} />
       </group>
       {children}

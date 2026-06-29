@@ -19,12 +19,10 @@ const defaultModel = {
 };
 
 const palette = [
-  "#ff6b6b",
   "#6bc1ff",
   "#ffd56b",
   "#7effa3",
   "#b98cff",
-  "#ff9fbf",
 ];
 
 const defaultMotion = {
@@ -482,6 +480,45 @@ export default function App() {
     };
   };
 
+  const getForceBasedColor = (model) => {
+  const settings = modelSettings[model.id] ?? createDefaultSettings();
+
+  const force = settings.parameters?.find(
+    (p) => p.name?.trim().toLowerCase() === "force"
+  );
+
+  if (!force) {
+    return settings.color;
+  }
+
+  const value = Number(force.value);
+
+  const WARNING_LIMIT = 80;
+  const CRITICAL_LIMIT = 100;
+
+  if (value >= CRITICAL_LIMIT) {
+    return "#ff6b6b";
+  }
+
+  if (value >= WARNING_LIMIT) {
+    return "#ff9fbf";
+  }
+
+  return settings.color;
+};
+
+  const isForceCritical = (model) => {
+  const settings = modelSettings[model.id] ?? createDefaultSettings();
+
+  const force = settings.parameters?.find(
+    (p) => p.name?.trim().toLowerCase() === "force"
+  );
+
+  if (!force) return false;
+
+  return Number(force.value) >= 100;
+};
+
   const renderModelNode = (modelId, index = 0) => {
     const model = allModels.find((item) => item.id === modelId);
     if (!model || !visibleModelIds.has(modelId)) {
@@ -489,7 +526,8 @@ export default function App() {
     }
 
     const localPose = getModelLocalPose(modelId);
-    const modelColor = modelSettings[model.id]?.color ?? palette[index % palette.length];
+    const modelColor = getForceBasedColor(model);
+    const critical = isForceCritical(model);
     const modelMotion = toRuntimeMotion(modelSettings[model.id]?.motion ?? defaultMotion);
     const children = (attachmentChildrenByParent[modelId] ?? []).map((childId, childIndex) =>
       renderModelNode(childId, index + childIndex + 1),
@@ -502,6 +540,7 @@ export default function App() {
         url={model.url}
         color={modelColor}
         motion={modelMotion}
+        isCritical={critical}
         selected={
           selectionModeActive ? selectionDraftIds.includes(model.id) : selectedModelId === model.id
         }
