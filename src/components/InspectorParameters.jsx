@@ -1,15 +1,23 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 function createParameterRow() {
   return { name: "", value: "", unit: "" };
 }
 
-export default function InspectorParameters({ open, parameters = [], onChange, onClose }) {
+export default function InspectorParameters({ open, parameters = [], onChange, onSave, onClose }) {
+  const [draftParameters, setDraftParameters] = useState(parameters);
+
+  useEffect(() => {
+    if (open) {
+      setDraftParameters(parameters.length ? parameters : [createParameterRow()]);
+    }
+  }, [open, parameters]);
+
   if (!open) {
     return null;
   }
 
-  const visibleParameters = parameters.length ? parameters : [createParameterRow()];
+  const visibleParameters = draftParameters.length ? draftParameters : [createParameterRow()];
 
   const updateParameter = (index, field, nextValue) => {
     const nextParameters = visibleParameters.map((parameter, currentIndex) => {
@@ -23,16 +31,21 @@ export default function InspectorParameters({ open, parameters = [], onChange, o
       };
     });
 
+    setDraftParameters(nextParameters);
     onChange?.(nextParameters);
   };
 
   const addParameter = () => {
-    onChange?.([...visibleParameters, createParameterRow()]);
+    const nextParameters = [...visibleParameters, createParameterRow()];
+    setDraftParameters(nextParameters);
+    onChange?.(nextParameters);
   };
 
   const removeParameter = (index) => {
     const nextParameters = visibleParameters.filter((_, currentIndex) => currentIndex !== index);
-    onChange?.(nextParameters.length ? nextParameters : [createParameterRow()]);
+    const normalizedParameters = nextParameters.length ? nextParameters : [createParameterRow()];
+    setDraftParameters(normalizedParameters);
+    onChange?.(normalizedParameters);
   };
 
   return (
@@ -82,6 +95,9 @@ export default function InspectorParameters({ open, parameters = [], onChange, o
         <div className="inspector-parameter-actions">
           <button type="button" className="library-action inspector-parameter-new" onClick={addParameter}>
             New
+          </button>
+          <button type="button" className="library-action" onClick={() => onSave?.(draftParameters)}>
+            Save
           </button>
         </div>
       </div>

@@ -222,6 +222,11 @@ export default function CadModel({
     event.stopPropagation();
     onSelect?.(id);
 
+    if (faceSelection?.phase !== "waiting-for-target") {
+      onTap?.(id);
+      return;
+    }
+
     const mesh = event.object;
     if (!mesh?.isMesh || event.faceIndex == null) {
       return;
@@ -253,7 +258,6 @@ export default function CadModel({
     onSelect?.(id);
 
     if (faceSelection?.phase !== "waiting-for-target") {
-      onTap?.(id);
       return;
     }
 

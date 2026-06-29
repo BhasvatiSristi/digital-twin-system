@@ -20,6 +20,7 @@ export default function Inspector({
   inspectorModelId,
   inspectorDraft,
   updateInspectorDraft,
+  saveInspectorParameters,
   closeInspector,
   saveInspector,
   allModels,
@@ -216,6 +217,7 @@ export default function Inspector({
             open={activeTab === "parameters"}
             parameters={inspectorDraft.parameters ?? []}
             onChange={(parameters) => updateInspectorDraft({ parameters })}
+            onSave={saveInspectorParameters}
             onClose={() => setActiveTab("motion")}
           />
         ) : null}

@@ -12,6 +12,7 @@ export default function Sidebar({
   handleShowOnlyModel,
   handleToggleModel,
   handleSelectModel,
+  handleDeleteModel,
   openInspector,
   status,
 }) {
@@ -51,7 +52,16 @@ export default function Sidebar({
           </div>
           <div className="model-actions">
             <button className="vis-btn" onClick={() => handleToggleModel(defaultModel.id)}>{visibleModelIds.has(defaultModel.id) ? "👁" : "🚫"}</button>
-            <button className="only-btn" onClick={() => handleShowOnlyModel(defaultModel.id)}>Only</button>
+            <button
+              type="button"
+              className="only-btn"
+              onClick={() => handleDeleteModel(defaultModel.id)}
+              disabled={defaultModel.isDefault}
+              aria-label={`Delete ${defaultModel.name}`}
+              title={defaultModel.isDefault ? "Default model cannot be deleted" : `Delete ${defaultModel.name}`}
+            >
+              X
+            </button>
             <button className="only-btn" onClick={() => openInspector(defaultModel.id)}>Edit</button>
           </div>
         </div>
@@ -71,7 +81,15 @@ export default function Sidebar({
               </div>
               <div className="model-actions">
                 <button className="vis-btn" onClick={() => handleToggleModel(model.id)}>{visibleModelIds.has(model.id) ? "👁" : "🚫"}</button>
-                <button className="only-btn" onClick={() => handleShowOnlyModel(model.id)}>Only</button>
+                <button
+                  type="button"
+                  className="only-btn"
+                  onClick={() => handleDeleteModel(model.id)}
+                  aria-label={`Delete ${model.name}`}
+                  title={`Delete ${model.name}`}
+                >
+                  X
+                </button>
                 <button className="only-btn" onClick={() => openInspector(model.id)}>Edit</button>
               </div>
             </div>

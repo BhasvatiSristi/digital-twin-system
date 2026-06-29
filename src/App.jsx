@@ -304,6 +304,7 @@ export default function App() {
   const [inspectorDraft, setInspectorDraft] = useState(null);
   const [inspectorTab, setInspectorTab] = useState(null);
   const [partPopupModelId, setPartPopupModelId] = useState(null);
+  const [nudgeDistance, setNudgeDistance] = useState(5);
   const controlsRef = useRef(null);
 
   const isSelectingParts = selectionModeActive;
@@ -776,6 +777,35 @@ export default function App() {
     closeInspector();
   };
 
+  const saveInspectorParameters = (parameters = []) => {
+    if (!inspectorModelId) {
+      return;
+    }
+
+    const nextParameters = compactParameterDrafts(parameters);
+    const modelName = allModels.find((model) => model.id === inspectorModelId)?.name ?? "model";
+
+    setInspectorDraft((current) =>
+      current
+        ? {
+            ...current,
+            parameters: normalizeParameterDrafts(nextParameters),
+          }
+        : current,
+    );
+
+    setModelSettings((currentSettings) => ({
+      ...currentSettings,
+      [inspectorModelId]: {
+        ...(currentSettings[inspectorModelId] ?? createDefaultSettings()),
+        parameters: nextParameters,
+      },
+    }));
+
+    setStatus(`Saved parameters for ${modelName}.`);
+    setInspectorTab("motion");
+  };
+
   const parseMoveCoordinates = (input) => {
     if (typeof input !== "string") {
       return null;
@@ -947,6 +977,105 @@ export default function App() {
     }
   };
 
+  const handleDeleteModel = (modelId) => {
+    const normalizedModelId = normalizeModelId(modelId);
+
+    if (normalizedModelId === defaultModel.id) {
+      setStatus("The default model cannot be deleted.");
+      return;
+    }
+
+    const modelToDelete = allModels.find((model) => model.id === normalizedModelId);
+    if (!modelToDelete) {
+      return;
+    }
+
+    setUploads((currentUploads) => currentUploads.filter((model) => model.id !== normalizedModelId));
+    setModelSettings((currentSettings) => {
+      const nextSettings = { ...currentSettings };
+      delete nextSettings[normalizedModelId];
+      return nextSettings;
+    });
+    setPositions((currentPositions) => {
+      const nextPositions = { ...currentPositions };
+      delete nextPositions[normalizedModelId];
+      return nextPositions;
+    });
+    setRotations((currentRotations) => {
+      const nextRotations = { ...currentRotations };
+      delete nextRotations[normalizedModelId];
+      return nextRotations;
+    });
+    setVisibleModelIds((currentVisibleIds) => {
+      const nextVisibleIds = new Set(currentVisibleIds);
+      nextVisibleIds.delete(normalizedModelId);
+      if (!nextVisibleIds.size) nextVisibleIds.add(defaultModel.id);
+      return nextVisibleIds;
+    });
+    setAttachmentParentByChild((currentAttachments) => {
+      const nextAttachments = {};
+
+      Object.entries(currentAttachments).forEach(([childId, parentId]) => {
+        if (childId === normalizedModelId || parentId === normalizedModelId) {
+          return;
+        }
+
+        nextAttachments[childId] = parentId;
+      });
+
+      return nextAttachments;
+    });
+
+    setSelectionDraftIds((currentSelection) => currentSelection.filter((id) => id !== normalizedModelId));
+    setFaceSelection((currentSelection) => {
+      if (!currentSelection) return currentSelection;
+      if (currentSelection.source?.modelId === normalizedModelId || currentSelection.target?.modelId === normalizedModelId) {
+        return null;
+      }
+
+      return currentSelection;
+    });
+    setJoinDialog((currentJoinDialog) => {
+      if (!currentJoinDialog) return currentJoinDialog;
+      if (currentJoinDialog.partIds?.includes(normalizedModelId) || currentJoinDialog.parentId === normalizedModelId || currentJoinDialog.childId === normalizedModelId) {
+        return null;
+      }
+
+      return currentJoinDialog;
+    });
+
+    if (inspectorModelId === normalizedModelId) {
+      closeInspector();
+    }
+
+    if (partPopupModelId === normalizedModelId) {
+      setPartPopupModelId(null);
+    }
+
+    if (selectedModelId === normalizedModelId) {
+      setSelectedModelId(null);
+    }
+
+    const remainingCount = allModels.length - 1;
+    setStatus(`Deleted ${modelToDelete.name}. ${remainingCount} model${remainingCount === 1 ? "" : "s"} remain.`);
+
+    const deletedUrls = new Set(objectUrlsRef.current.filter((url) => url === modelToDelete.url));
+    if (deletedUrls.size) {
+      const stillUsedUrls = new Set(
+        allModels
+          .filter((model) => model.id !== normalizedModelId)
+          .map((model) => model.url),
+      );
+
+      deletedUrls.forEach((url) => {
+        if (!stillUsedUrls.has(url)) {
+          URL.revokeObjectURL(url);
+          objectUrlsRef.current = objectUrlsRef.current.filter((currentUrl) => currentUrl !== url);
+        }
+      });
+    }
+  };
+
   const handleModelMove = (modelId, nextPosition) => {
     setPositions((currentPositions) => ({
       ...currentPositions,
@@ -954,10 +1083,15 @@ export default function App() {
     }));
   };
 
-  const NUDGE_STEP = 5;
-
   const handleNudge = (dx, dy, dz) => {
-    handleMoveSelectedOrAttached(dx, dy, dz);
+    const distance = Number(nudgeDistance);
+
+    if (!Number.isFinite(distance) || distance <= 0) {
+      setStatus("Enter a positive move distance.");
+      return;
+    }
+
+    handleMoveSelectedOrAttached(dx * distance, dy * distance, dz * distance);
   };
 
   const handleShowAllModels = () => {
@@ -1010,28 +1144,41 @@ export default function App() {
         handleShowOnlyModel={handleShowOnlyModel}
         handleToggleModel={handleToggleModel}
         handleSelectModel={handleSelectModel}
+        handleDeleteModel={handleDeleteModel}
         openInspector={openInspector}
         status={status}
       />
 
       <div className="viewer-panel">
         <div className="axis-controls" aria-hidden={false}>
-          {selectionModeActive ? (
-            <button
-              type="button"
-              className="axis-group-btn"
-              onClick={openJoinDialogFromSelection}
-            >
-              Join selected parts
-            </button>
-          ) : null}
+          <div className="axis-controls-row">
+            {selectionModeActive ? (
+              <button
+                type="button"
+                className="axis-group-btn"
+                onClick={openJoinDialogFromSelection}
+              >
+                Join selected parts
+              </button>
+            ) : null}
+            <label className="axis-distance-input">
+              <span>Step</span>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={nudgeDistance}
+                onChange={(event) => setNudgeDistance(event.target.value === "" ? "" : Number(event.target.value))}
+              />
+            </label>
+          </div>
           <div className="axis-grid">
-            <button className="axis-btn" title="+X" onClick={() => handleNudge(NUDGE_STEP, 0, 0)}>+X</button>
-            <button className="axis-btn" title="-X" onClick={() => handleNudge(-NUDGE_STEP, 0, 0)}>-X</button>
-            <button className="axis-btn" title="+Y" onClick={() => handleNudge(0, NUDGE_STEP, 0)}>+Y</button>
-            <button className="axis-btn" title="-Y" onClick={() => handleNudge(0, -NUDGE_STEP, 0)}>-Y</button>
-            <button className="axis-btn" title="+Z" onClick={() => handleNudge(0, 0, NUDGE_STEP)}>+Z</button>
-            <button className="axis-btn" title="-Z" onClick={() => handleNudge(0, 0, -NUDGE_STEP)}>-Z</button>
+            <button className="axis-btn" title="+X" onClick={() => handleNudge(1, 0, 0)}>+X</button>
+            <button className="axis-btn" title="-X" onClick={() => handleNudge(-1, 0, 0)}>-X</button>
+            <button className="axis-btn" title="+Y" onClick={() => handleNudge(0, 1, 0)}>+Y</button>
+            <button className="axis-btn" title="-Y" onClick={() => handleNudge(0, -1, 0)}>-Y</button>
+            <button className="axis-btn" title="+Z" onClick={() => handleNudge(0, 0, 1)}>+Z</button>
+            <button className="axis-btn" title="-Z" onClick={() => handleNudge(0, 0, -1)}>-Z</button>
           </div>
         </div>
 
@@ -1060,6 +1207,7 @@ export default function App() {
           inspectorModelId={inspectorModelId}
           inspectorDraft={inspectorDraft}
           updateInspectorDraft={updateInspectorDraft}
+          saveInspectorParameters={saveInspectorParameters}
           closeInspector={closeInspector}
           saveInspector={saveInspector}
           copyInspector={copyInspectorModel}

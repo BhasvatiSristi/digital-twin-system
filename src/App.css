@@ -270,6 +270,14 @@
 	pointer-events: auto;
 }
 
+.axis-controls-row {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
 .axis-note {
 	margin: 0;
 	padding: 6px 10px;
@@ -296,6 +304,41 @@
 .axis-group-btn:hover {
 	border-color: rgba(143, 179, 255, 0.45);
 	transform: translateY(-1px);
+}
+
+.axis-distance-input {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	border-radius: 999px;
+	background: rgba(12, 16, 24, 0.72);
+	border: 1px solid rgba(143, 179, 255, 0.12);
+	color: rgba(229, 238, 249, 0.9);
+	font-size: 0.8rem;
+	font-weight: 600;
+}
+
+.axis-distance-input span {
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.axis-distance-input input {
+	width: 84px;
+	padding: 7px 10px;
+	border-radius: 10px;
+	border: 1px solid rgba(143, 179, 255, 0.18);
+	background: rgba(7, 11, 18, 0.7);
+	color: #eef4ff;
+	font: inherit;
+	font-weight: 700;
+	outline: none;
+}
+
+.axis-distance-input input:focus {
+	border-color: rgba(143, 179, 255, 0.55);
+	box-shadow: 0 0 0 2px rgba(124, 179, 255, 0.12);
 }
 
 .axis-grid {
@@ -656,6 +699,7 @@
 
 .inspector-parameter-actions {
 	display: flex;
+	gap: 10px;
 	justify-content: flex-end;
 	margin-top: 16px;
 }
