@@ -1,30 +1,29 @@
-import { Center, useGLTF } from "@react-three/drei";
+import { Center, Html, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 
-function GltfModel({ url, color = "#cfd8dc",blink }) {
+function GltfModel({ url, color = "#cfd8dc" }) {
   const gltf = useGLTF(url);
   const scene = useMemo(() => gltf?.scene?.clone(true), [gltf]);
 
   useEffect(() => {
-    if (!scene) return;
-    scene.traverse((child) => {
-      if (child.isMesh) {
-        if (child.material) child.material = child.material.clone();
-        // Use a PBR metal appearance (iron-like)
-        child.scale.setScalar(
-    blink.current ? 1 : 0.7
-);
-        child.material.metalness = 0.9;
-        child.material.roughness = 0.25;
-        // boost reflectivity from environment
-        child.material.envMapIntensity = 1.0;
-        // subtle sheen
-        child.material.specularIntensity = child.material.specularIntensity ?? 0.5;
-      }
-    });
-  }, [scene, color, blink]);
+  if (!scene) return;
+
+  scene.traverse((child) => {
+    if (!child.isMesh) return;
+
+    if (child.material)
+      child.material = child.material.clone();
+
+    child.material.color.set(color);
+    child.material.metalness = 0.9;
+    child.material.roughness = 0.25;
+    child.material.envMapIntensity = 1;
+    child.material.specularIntensity =
+      child.material.specularIntensity ?? 0.5;
+  });
+}, [scene, color]);
 
   if (!scene) {
     return null;
@@ -119,6 +118,39 @@ function toWorldFaceNormal(mesh, localNormal) {
   return worldNormal;
 }
 
+function WarningIndicator({ visible }) {
+  const iconRef = useRef();
+
+  useFrame(({ clock }) => {
+    if (!iconRef.current) return;
+
+    const blink =
+      Math.floor(clock.getElapsedTime() * 2) % 2 === 0;
+
+    iconRef.current.style.opacity =
+      visible && blink ? "1" : "0.2";
+  });
+
+  if (!visible) return null;
+
+  return (
+    <Html position={[0, 45, 0]} center>
+      <div
+        ref={iconRef}
+        style={{
+          fontSize: "34px",
+          userSelect: "none",
+          pointerEvents: "none",
+          transition: "opacity 0.15s linear",
+          filter: "drop-shadow(0 0 10px red)",
+        }}
+      >
+        ⚠️
+      </div>
+    </Html>
+  );
+}
+
 export default function CadModel({
   id,
   url,
@@ -139,7 +171,6 @@ export default function CadModel({
 }) {
   const groupRef = useRef(null);
   const meshRef = useRef(null);
-  const blinkState = useRef(false);
 
   const effectiveColor = useMemo(() => {
     const base = new THREE.Color(color ?? "#cfd8dc");
@@ -221,29 +252,6 @@ export default function CadModel({
       groupRef.current.position.copy(basePosition);
     }
 
-    if (meshRef.current) {
-
-      blinkState.current =
-        isCritical &&
-        Math.floor(clock.getElapsedTime() * 2) % 2 === 0;
-
-        console.log(
-            "Critical:",
-            isCritical,
-            "Blink:",
-            blinkState.current
-        );
-
-      meshRef.current.traverse((child) => {
-        if (!child.isMesh) return;
-
-        child.material.color.set(
-          blinkState.current
-            ? "#ff6b6b"
-            : color
-        );
-      });
-    }
   });
 
   const handleDoubleClick = (event) => {
@@ -337,8 +345,19 @@ export default function CadModel({
   return (
     <group ref={groupRef} position={position} {...commonHandlers}>
       <group ref={meshRef}>
-        <GltfModel url={url} color={effectiveColor} blink={blinkState.current}/>
-        <FaceSelectionMarker faceSelection={faceSelection} modelId={id} />
+        <GltfModel
+            url={url}
+            color={effectiveColor}
+        />
+
+        <WarningIndicator
+            visible={isCritical}
+        />
+
+        <FaceSelectionMarker
+            faceSelection={faceSelection}
+            modelId={id}
+        />
       </group>
       {children}
     </group>
