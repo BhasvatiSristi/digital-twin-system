@@ -256,73 +256,58 @@ export default function CadModel({
 
   
   const handleDoubleClick = (event) => {
-    event.stopPropagation();
-    onSelect?.(id);
+  event.stopPropagation();
 
-    if (faceSelection?.phase !== "waiting-for-target") {
-      onTap?.(id);
-      return;
-    }
+  onSelect?.(id);
 
-    const mesh = event.object;
-    if (!mesh?.isMesh || event.faceIndex == null) {
-      return;
-    }
-
-    mesh.updateWorldMatrix?.(true, false);
-    const faceData = getFaceTriangle(mesh.geometry, event.faceIndex);
-    if (!faceData) {
-      return;
-    }
-
-    const worldNormal = event.face?.normal ? toWorldFaceNormal(mesh, event.face.normal) : faceData.normal.clone().transformDirection(mesh.matrixWorld).normalize();
-
-    const pick = toLocalFacePick({
-      modelId: id,
-      rootObject: groupRef.current ?? mesh,
-      faceIndex: event.faceIndex,
-      point: event.point ?? faceData.centroid,
-      normal: worldNormal,
-      meshName: mesh.name ?? null,
-      meshUuid: mesh.uuid,
-    });
-
-    onFaceDoubleClick?.(pick);
-  };
+  onTap?.(id);
+};
 
   const handleClick = (event) => {
-    event.stopPropagation();
-    onSelect?.(id);
+  event.stopPropagation();
 
-    if (faceSelection?.phase !== "waiting-for-target") {
-      return;
-    }
+  onSelect?.(id);
 
-    const mesh = event.object;
-    if (!mesh?.isMesh || event.faceIndex == null) {
-      return;
-    }
+  if (!faceSelection) {
+    return;
+  }
 
-    mesh.updateWorldMatrix?.(true, false);
-    const faceData = getFaceTriangle(mesh.geometry, event.faceIndex);
-    if (!faceData) {
-      return;
-    }
+  const mesh = event.object;
 
-    const worldNormal = event.face?.normal ? toWorldFaceNormal(mesh, event.face.normal) : faceData.normal.clone().transformDirection(mesh.matrixWorld).normalize();
+  if (!mesh?.isMesh || event.faceIndex == null) {
+    return;
+  }
 
-    const pick = toLocalFacePick({
-      modelId: id,
-      rootObject: groupRef.current ?? mesh,
-      faceIndex: event.faceIndex,
-      point: event.point ?? faceData.centroid,
-      normal: worldNormal,
-      meshName: mesh.name ?? null,
-      meshUuid: mesh.uuid,
-    });
+  mesh.updateWorldMatrix?.(true, false);
 
-    onFaceClick?.(pick);
-  };
+  const faceData = getFaceTriangle(
+    mesh.geometry,
+    event.faceIndex
+  );
+
+  if (!faceData) {
+    return;
+  }
+
+  const worldNormal = event.face?.normal
+    ? toWorldFaceNormal(mesh, event.face.normal)
+    : faceData.normal
+        .clone()
+        .transformDirection(mesh.matrixWorld)
+        .normalize();
+
+  const pick = toLocalFacePick({
+    modelId: id,
+    rootObject: groupRef.current ?? mesh,
+    faceIndex: event.faceIndex,
+    point: event.point ?? faceData.centroid,
+    normal: worldNormal,
+    meshName: mesh.name ?? null,
+    meshUuid: mesh.uuid,
+  });
+
+  onFaceClick?.(pick);
+};
 
   const commonHandlers = {
     onClick: handleClick,

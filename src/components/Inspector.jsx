@@ -29,6 +29,7 @@ export default function Inspector({
   setActiveTab,
   onSelectJoinParts,
   onMovePart,
+  startFaceConnection,
 }) {
   if (!inspectorModelId || !inspectorDraft) return null;
 
@@ -70,6 +71,16 @@ export default function Inspector({
             onClick={() => setActiveTab("select")}
           >
             Join parts
+          </button>
+          <button
+              type="button"
+              className={`inspector-tab ${activeTab === "face" ? "active" : ""}`}
+              onClick={() => {
+                  closeInspector();
+                  startFaceConnection();
+              }}
+          >
+              Connect Faces
           </button>
           <button
             type="button"

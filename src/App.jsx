@@ -293,6 +293,7 @@ export default function App() {
   const [selectionModeActive, setSelectionModeActive] = useState(false);
   const [joinDialog, setJoinDialog] = useState(null);
   const [faceSelection, setFaceSelection] = useState(null);
+  const [faceConnectMode, setFaceConnectMode] = useState(false);
   const [status, setStatus] = useState("House model loaded.");
   const objectUrlsRef = useRef([]);
   const [positions, setPositions] = useState({});
@@ -550,7 +551,6 @@ export default function App() {
         onTap={setPartPopupModelId}
         onEdit={openInspector}
         onMove={handleModelMove}
-        onFaceDoubleClick={handleFaceDoubleClick}
         onFaceClick={handleFaceClick}
         faceSelection={faceSelection}
       >
@@ -728,7 +728,20 @@ export default function App() {
 
   const clearFaceSelection = () => {
     setFaceSelection(null);
+    setFaceConnectMode(false);
   };
+
+  const startFaceConnection = () => {
+  setFaceConnectMode(true);
+
+  setFaceSelection({
+    phase: "waiting-for-source",
+    source: null,
+    target: null,
+  });
+
+  setStatus("Click the SOURCE face.");
+};
 
   const selectSourceFace = (facePick) => {
     setFaceSelection({
@@ -742,22 +755,30 @@ export default function App() {
     focusOn(facePick.worldPoint ?? facePick.localPoint ?? [0, 0, 0]);
   };
 
-  const handleFaceDoubleClick = (facePick) => {
-    if (!facePick?.modelId) {
-      return;
-    }
-
-    setPartPopupModelId(null);
-    selectSourceFace(facePick);
-  };
-
   const handleFaceClick = (facePick) => {
-    if (!facePick?.modelId || faceSelection?.phase !== "waiting-for-target") {
+    if (!faceConnectMode || !facePick?.modelId) {
       return;
     }
 
+    // First face
+    if (faceSelection?.phase === "waiting-for-source") {
+      setFaceSelection({
+        phase: "waiting-for-target",
+        source: facePick,
+      });
+
+      setSelectedModelId(facePick.modelId);
+
+      setStatus("Source selected. Click the TARGET face.");
+
+      return;
+    }
+
+  // Second face
+  if (faceSelection?.phase === "waiting-for-target") {
     applyFaceSnap(faceSelection.source, facePick);
-  };
+  }
+};
 
   const openInspector = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
@@ -1255,6 +1276,7 @@ export default function App() {
           setActiveTab={handleInspectorTabChange}
           onSelectJoinParts={handleSelectJoinParts}
           onMovePart={handleInspectorMove}
+          startFaceConnection={startFaceConnection}
         />
 
         <PartInfoPopup
