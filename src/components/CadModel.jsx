@@ -254,6 +254,7 @@ export default function CadModel({
 
   });
 
+  
   const handleDoubleClick = (event) => {
     event.stopPropagation();
     onSelect?.(id);
