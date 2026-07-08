@@ -9,7 +9,40 @@ import Sidebar from "./components/Sidebar";
 import Inspector from "./components/Inspector";
 import PartInfoPopup from "./components/PartInfoPopup";
 
-const supportedExtensions = ["glb", "stl", "step"];
+import {
+  defaultMotion,
+  normalizeMotionDraft,
+  normalizeMotionParameter,
+  getSpeedUnitOptions,
+  getAmplitudeUnitOptions,
+  toRuntimeMotion,
+} from "./utils/motionUtils";
+
+import {
+  createParameterDraft,
+  normalizeParameterDraft,
+  normalizeParameterDrafts,
+  compactParameterDrafts,
+  createDefaultSettings,
+  normalizeModelId,
+  normalizeVector,
+  quaternionFromArray,
+  vectorFromArray,
+  collectDescendantIds,
+} from "./utils/modelUtils";
+
+import {
+  supportedExtensions,
+  getFileExtension,
+  formatFileLabel,
+  createUploadId,
+} from "./utils/uploadUtils";
+
+import {
+  getForceBasedColor,
+  isForceCritical,
+} from "./utils/forceUtils";
+
 const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
 const defaultModel = {
   id: "default-model",
@@ -17,203 +50,6 @@ const defaultModel = {
   url: "/model/3d_house.glb",
   isDefault: true,
 };
-
-const palette = [
-  "#6bc1ff",
-  "#ffd56b",
-  "#7effa3",
-  "#b98cff",
-];
-
-const defaultMotion = {
-  type: "none",
-  axis: "x",
-  direction: "positive",
-  speed: { value: 1, unit: "m/s" },
-  amplitude: { value: 20, unit: "m" },
-};
-
-function createMotionParameter(value, unit) {
-  return { value, unit };
-}
-
-function createParameterDraft(name = "", value = "", unit = "") {
-  return { name, value, unit };
-}
-
-function getSpeedUnitOptions(type) {
-  if (type === "rotation") {
-    return ["rpm", "rps", "deg/s", "rad/s"];
-  }
-
-  if (type === "oscillation") {
-    return ["m/s", "cm/s", "mm/s"];
-  }
-
-  return ["m/s", "cm/s", "mm/s"];
-}
-
-function getAmplitudeUnitOptions() {
-  return ["m", "cm", "mm"];
-}
-
-function normalizeMotionParameter(parameter, fallbackValue, fallbackUnit, allowedUnits) {
-  if (parameter && typeof parameter === "object" && !Array.isArray(parameter)) {
-    const nextValue = Number(parameter.value);
-    return {
-      value: Number.isFinite(nextValue) ? nextValue : fallbackValue,
-      unit: allowedUnits.includes(parameter.unit) ? parameter.unit : fallbackUnit,
-    };
-  }
-
-  const nextValue = Number(parameter);
-  return createMotionParameter(Number.isFinite(nextValue) ? nextValue : fallbackValue, fallbackUnit);
-}
-
-function normalizeMotionDraft(motion = {}) {
-  const type = motion.type ?? defaultMotion.type;
-  const speedUnit = type === "rotation" ? "rpm" : "m/s";
-
-  return {
-    ...defaultMotion,
-    ...motion,
-    type,
-    axis: motion.axis ?? defaultMotion.axis,
-    direction: motion.direction ?? defaultMotion.direction,
-    speed: normalizeMotionParameter(motion.speed, defaultMotion.speed.value, speedUnit, getSpeedUnitOptions(type)),
-    amplitude: normalizeMotionParameter(motion.amplitude, defaultMotion.amplitude.value, "m", getAmplitudeUnitOptions()),
-  };
-}
-
-function normalizeParameterDraft(parameter = {}) {
-  if (parameter && typeof parameter === "object" && !Array.isArray(parameter)) {
-    return {
-      name: String(parameter.name ?? ""),
-      value: String(parameter.value ?? ""),
-      unit: String(parameter.unit ?? ""),
-    };
-  }
-
-  return createParameterDraft();
-}
-
-function normalizeParameterDrafts(parameters = []) {
-  if (!Array.isArray(parameters)) {
-    return [];
-  }
-
-  return parameters.map((parameter) => normalizeParameterDraft(parameter));
-}
-
-function compactParameterDrafts(parameters = []) {
-  return normalizeParameterDrafts(parameters).filter((parameter) => parameter.name || parameter.value || parameter.unit);
-}
-
-function convertSpeedToBaseUnits(speed, type) {
-  const value = Number(speed?.value ?? speed ?? 0);
-
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  const unit = speed?.unit ?? "m/s";
-
-  if (type === "translation") {
-    if (unit === "cm/s") return value / 100;
-    if (unit === "mm/s") return value / 1000;
-    return value;
-  }
-
-  if (unit === "deg/s") return (value * Math.PI) / 180;
-  if (unit === "rpm") return (value * 2 * Math.PI) / 60;
-  if (unit === "rps") return value * 2 * Math.PI;
-  return value;
-}
-
-function convertAmplitudeToBaseUnits(amplitude) {
-  const value = Number(amplitude?.value ?? amplitude ?? 0);
-
-  if (!Number.isFinite(value)) {
-    return 0;
-  }
-
-  const unit = amplitude?.unit ?? "m";
-
-  if (unit === "cm") return value / 100;
-  if (unit === "mm") return value / 1000;
-  return value;
-}
-
-function toRuntimeMotion(motion = {}) {
-  const normalized = normalizeMotionDraft(motion);
-
-  if (normalized.type === "translation") {
-    const amplitude = convertAmplitudeToBaseUnits(normalized.amplitude);
-    const speed = convertSpeedToBaseUnits(normalized.speed, normalized.type);
-
-    return {
-      ...normalized,
-      speed: amplitude > 0 ? speed / amplitude : 0,
-      amplitude,
-    };
-  }
-
-  return {
-    ...normalized,
-    speed: convertSpeedToBaseUnits(normalized.speed, normalized.type),
-    amplitude: convertAmplitudeToBaseUnits(normalized.amplitude),
-  };
-}
-
-function createDefaultSettings(index = 0) {
-  return {
-    color: palette[index % palette.length],
-    motion: normalizeMotionDraft(),
-    parameters: [],
-  };
-}
-
-function getFileExtension(name) {
-  return name.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function formatFileLabel(name) {
-  const extension = getFileExtension(name);
-  return extension ? extension.toUpperCase() : "FILE";
-}
-
-function createUploadId(file, suffix = "") {
-  return `${file.name}-${file.lastModified}-${file.size}-${suffix || "upload"}-${Math.random().toString(36).slice(2)}`;
-}
-
-function normalizeModelId(modelId) {
-  return String(modelId);
-}
-
-function normalizeVector(arrayLike) {
-  return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
-}
-
-function quaternionFromArray(arrayLike = [0, 0, 0, 1]) {
-  return new THREE.Quaternion(arrayLike[0], arrayLike[1], arrayLike[2], arrayLike[3]);
-}
-
-function vectorFromArray(arrayLike = [0, 0, 0]) {
-  return new THREE.Vector3(arrayLike[0], arrayLike[1], arrayLike[2]);
-}
-
-function collectDescendantIds(modelId, childrenByParent = {}) {
-  const descendantIds = [];
-  const queue = [...(childrenByParent[modelId] ?? [])];
-
-  while (queue.length) {
-    const nextId = queue.shift();
-    descendantIds.push(nextId);
-    queue.push(...(childrenByParent[nextId] ?? []));
-  }
-
-  return descendantIds;
-}
 
 function Loader() {
   const { progress } = useProgress();
@@ -481,44 +317,6 @@ export default function App() {
     };
   };
 
-  const getForceBasedColor = (model) => {
-  const settings = modelSettings[model.id] ?? createDefaultSettings();
-
-  const force = settings.parameters?.find(
-    (p) => p.name?.trim().toLowerCase() === "force"
-  );
-
-  if (!force) {
-    return settings.color;
-  }
-
-  const value = Number(force.value);
-
-  const WARNING_LIMIT = 80;
-  const CRITICAL_LIMIT = 100;
-
-  if (value >= CRITICAL_LIMIT) {
-    return "#ff6b6b";
-  }
-
-  if (value >= WARNING_LIMIT) {
-    return "#ff9fbf";
-  }
-
-  return settings.color;
-};
-
-  const isForceCritical = (model) => {
-  const settings = modelSettings[model.id] ?? createDefaultSettings();
-
-  const force = settings.parameters?.find(
-    (p) => p.name?.trim().toLowerCase() === "force"
-  );
-
-  if (!force) return false;
-
-  return Number(force.value) >= 100;
-};
 
   const renderModelNode = (modelId, index = 0) => {
     const model = allModels.find((item) => item.id === modelId);
@@ -527,9 +325,13 @@ export default function App() {
     }
 
     const localPose = getModelLocalPose(modelId);
-    const modelColor = getForceBasedColor(model);
-    const critical = isForceCritical(model);
-    const modelMotion = toRuntimeMotion(modelSettings[model.id]?.motion ?? defaultMotion);
+    const settings =
+      modelSettings[model.id] ?? createDefaultSettings();
+
+    const modelColor = getForceBasedColor(settings);
+    const critical = isForceCritical(settings);
+    const modelMotion = toRuntimeMotion(settings.motion);
+    
     const children = (attachmentChildrenByParent[modelId] ?? []).map((childId, childIndex) =>
       renderModelNode(childId, index + childIndex + 1),
     );
