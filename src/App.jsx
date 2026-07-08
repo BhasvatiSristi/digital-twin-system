@@ -1,26 +1,29 @@
-import { Bounds, Html, OrbitControls, useProgress, Environment } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+
+
+import {
+  Bounds, Html,
+  OrbitControls,
+  Environment,
+} from "@react-three/drei";
 
 import "./App.css";
 import CadModel from "./components/CadModel";
 import Sidebar from "./components/Sidebar";
 import Inspector from "./components/Inspector";
 import PartInfoPopup from "./components/PartInfoPopup";
+import Loader from "./components/Loader";
+import JoinDialog from "./components/JoinDialog";
 
 import {
   defaultMotion,
   normalizeMotionDraft,
-  normalizeMotionParameter,
-  getSpeedUnitOptions,
-  getAmplitudeUnitOptions,
   toRuntimeMotion,
 } from "./utils/motionUtils";
 
 import {
-  createParameterDraft,
-  normalizeParameterDraft,
   normalizeParameterDrafts,
   compactParameterDrafts,
   createDefaultSettings,
@@ -34,7 +37,6 @@ import {
 import {
   supportedExtensions,
   getFileExtension,
-  formatFileLabel,
   createUploadId,
 } from "./utils/uploadUtils";
 
@@ -50,74 +52,6 @@ const defaultModel = {
   url: "/model/3d_house.glb",
   isDefault: true,
 };
-
-function Loader() {
-  const { progress } = useProgress();
-  return <Html center>{Math.round(progress)} %</Html>;
-}
-
-function JoinDialog({ open, partIds, parentId, childId, allModels, onParentChange, onChildChange, onCancel, onConfirm }) {
-  if (!open) {
-    return null;
-  }
-
-  const options = partIds.map((partId) => {
-    const model = allModels.find((item) => item.id === partId);
-    return {
-      id: partId,
-      label: model?.name ?? partId,
-    };
-  });
-
-  return (
-    <div className="inspector-backdrop join-backdrop" onClick={onCancel}>
-      <div className="inspector-panel join-panel" onClick={(event) => event.stopPropagation()}>
-        <div className="inspector-header">
-          <div>
-            <p className="inspector-kicker">Join parts</p>
-            <h2>Choose parent and child</h2>
-          </div>
-          <button className="inspector-close" type="button" onClick={onCancel}>
-            Close
-          </button>
-        </div>
-
-        <label className="inspector-field">
-          <span>Parent part</span>
-          <select value={parentId ?? ""} onChange={(event) => onParentChange(event.target.value)}>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="inspector-field">
-          <span>Child part</span>
-          <select value={childId ?? ""} onChange={(event) => onChildChange(event.target.value)}>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <p className="inspector-help">Parent motion propagates to the child. The child can still move on its own without driving the parent.</p>
-
-        <div className="inspector-actions">
-          <button type="button" className="library-action" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="button" className="library-action" onClick={onConfirm}>
-            Join
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function App() {
   const [uploads, setUploads] = useState([]);
@@ -331,7 +265,7 @@ export default function App() {
     const modelColor = getForceBasedColor(settings);
     const critical = isForceCritical(settings);
     const modelMotion = toRuntimeMotion(settings.motion);
-    
+
     const children = (attachmentChildrenByParent[modelId] ?? []).map((childId, childIndex) =>
       renderModelNode(childId, index + childIndex + 1),
     );
@@ -985,12 +919,6 @@ export default function App() {
         childrenNames: selectedPartChildren.map((childId) => allModels.find((model) => model.id === childId)?.name ?? childId),
       }
     : null;
-  const motionOptions = [
-    { value: "none", label: "None" },
-    { value: "translation", label: "Translation" },
-    { value: "oscillation", label: "Auxilatory" },
-    { value: "rotation", label: "Rotary" },
-  ];
 
   return (
     <div className="app-shell">
