@@ -1,5 +1,5 @@
 import { Canvas } from "@react-three/fiber";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import * as THREE from "three";
 
 
@@ -17,22 +17,21 @@ import PartInfoPopup from "./components/PartInfoPopup";
 import Loader from "./components/Loader";
 import JoinDialog from "./components/JoinDialog";
 import useUploadManager from "./hooks/useUploadManager";
+import useFaceConnection from "./hooks/useFaceConnection";
+import useHierarchy from "./hooks/useHierarchy";
+import useInspector from "./hooks/useInspector";
 
 import {
   defaultMotion,
-  normalizeMotionDraft,
   toRuntimeMotion,
 } from "./utils/motionUtils";
 
 import {
-  normalizeParameterDrafts,
-  compactParameterDrafts,
   createDefaultSettings,
   normalizeModelId,
   normalizeVector,
   quaternionFromArray,
   vectorFromArray,
-  collectDescendantIds,
 } from "./utils/modelUtils";
 
 import {
@@ -52,27 +51,26 @@ export default function App() {
   // start with no models visible by default
   const [visibleModelIds, setVisibleModelIds] = useState(() => new Set([defaultModel.id]));
   const [selectedModelId, setSelectedModelId] = useState(null);
-  const [selectionDraftIds, setSelectionDraftIds] = useState([]);
-  const [attachmentParentByChild, setAttachmentParentByChild] = useState({});
-  const [selectionModeActive, setSelectionModeActive] = useState(false);
-  const [joinDialog, setJoinDialog] = useState(null);
-  const [faceSelection, setFaceSelection] = useState(null);
-  const [faceConnectMode, setFaceConnectMode] = useState(false);
   const [status, setStatus] = useState("House model loaded.");
   const [positions, setPositions] = useState({});
   const [rotations, setRotations] = useState({});
   const [modelSettings, setModelSettings] = useState(() => ({}));
-  const [inspectorModelId, setInspectorModelId] = useState(null);
-  const [inspectorDraft, setInspectorDraft] = useState(null);
-  const [inspectorTab, setInspectorTab] = useState(null);
   const [partPopupModelId, setPartPopupModelId] = useState(null);
   const [nudgeDistance, setNudgeDistance] = useState(5);
   const controlsRef = useRef(null);
 
+  const focusOn = (pos) => {
+    if (!pos) return;
+    const v = pos.isVector3 ? pos : normalizeVector(pos);
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(v);
+      controlsRef.current.update();
+    }
+  };
+
   const {
     uploads,
     setUploads,
-    objectUrlsRef,
     handleFileChange,
     releaseUploadUrl,
   } = useUploadManager({
@@ -85,132 +83,69 @@ export default function App() {
     setStatus,
   });
 
-  const isSelectingParts = selectionModeActive;
-
-  const attachmentChildrenByParent = (() => {
-    const map = {};
-
-    Object.entries(attachmentParentByChild).forEach(([childId, parentId]) => {
-      if (!map[parentId]) {
-        map[parentId] = [];
-      }
-      map[parentId].push(childId);
-    });
-
-    return map;
-  })();
-
-  const openJoinDialogFromSelection = () => {
-    if (!selectionModeActive || selectionDraftIds.length < 2) {
-      setStatus("Select at least two parts before joining.");
-      return;
-    }
-
-    const uniquePartIds = [...new Set(selectionDraftIds)];
-    setJoinDialog({
-      partIds: uniquePartIds,
-      parentId: uniquePartIds[0],
-      childId: uniquePartIds[1] ?? uniquePartIds[0],
-    });
-    setStatus("Choose the parent and child, then confirm the join.");
-  };
-
-  const closeJoinDialog = () => {
-    setJoinDialog(null);
-  };
-
-  const resetJoinSelection = () => {
-    setSelectionModeActive(false);
-    setSelectionDraftIds([]);
-    setJoinDialog(null);
-  };
-
-  const applySubtreeTransform = (rootId, nextRootPosition, nextRootQuaternion) => {
-    const oldRootPosition = vectorFromArray(positions[rootId] ?? [0, 0, 0]);
-    const oldRootQuaternion = quaternionFromArray(rotations[rootId] ?? [0, 0, 0, 1]);
-    const rootInverseQuaternion = oldRootQuaternion.clone().invert();
-    const affectedIds = [rootId, ...collectDescendantIds(rootId, attachmentChildrenByParent)];
-
-    setPositions((currentPositions) => {
-      const nextPositions = { ...currentPositions };
-
-      affectedIds.forEach((modelId) => {
-        if (modelId === rootId) {
-          nextPositions[modelId] = [nextRootPosition.x, nextRootPosition.y, nextRootPosition.z];
-          return;
-        }
-
-        const currentPosition = vectorFromArray(currentPositions[modelId] ?? [0, 0, 0]);
-        const relativePosition = currentPosition.clone().sub(oldRootPosition).applyQuaternion(rootInverseQuaternion.clone());
-        const nextPosition = relativePosition.applyQuaternion(nextRootQuaternion.clone()).add(nextRootPosition);
-        nextPositions[modelId] = [nextPosition.x, nextPosition.y, nextPosition.z];
-      });
-
-      return nextPositions;
-    });
-
-    setRotations((currentRotations) => {
-      const nextRotations = { ...currentRotations };
-
-      affectedIds.forEach((modelId) => {
-        if (modelId === rootId) {
-          nextRotations[modelId] = [nextRootQuaternion.x, nextRootQuaternion.y, nextRootQuaternion.z, nextRootQuaternion.w];
-          return;
-        }
-
-        const currentQuaternion = quaternionFromArray(currentRotations[modelId] ?? [0, 0, 0, 1]);
-        const relativeQuaternion = rootInverseQuaternion.clone().multiply(currentQuaternion);
-        const nextQuaternion = nextRootQuaternion.clone().multiply(relativeQuaternion).normalize();
-        nextRotations[modelId] = [nextQuaternion.x, nextQuaternion.y, nextQuaternion.z, nextQuaternion.w];
-      });
-
-      return nextRotations;
-    });
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.key !== "Enter" || !selectionModeActive || !selectionDraftIds.length) {
-        return;
-      }
-
-      event.preventDefault();
-      openJoinDialogFromSelection();
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectionDraftIds, selectionModeActive]);
-
   const allModels = [defaultModel, ...uploads];
+
+  const {
+    inspectorModelId,
+    inspectorDraft,
+    inspectorTab,
+    setInspectorTab,
+    openInspector: openInspectorState,
+    closeInspector,
+    updateInspectorDraft,
+    saveInspector,
+    saveInspectorParameters,
+  } = useInspector({
+    modelSettings,
+    setModelSettings,
+    setStatus,
+    getModelName: (modelId) => allModels.find((model) => model.id === modelId)?.name,
+  });
+
+  const {
+    attachmentParentByChild,
+    attachmentChildrenByParent,
+    selectionModeActive,
+    selectionDraftIds,
+    joinDialog,
+    startJoinSelection,
+    openJoinDialogFromSelection,
+    closeJoinDialog,
+    applySubtreeTransform,
+    confirmJoinSelection,
+    handleJoinSelectionChange,
+    getModelLocalPose,
+    handleJoinSelectionToggle,
+    handleInspectorTabChange: handleHierarchyInspectorTabChange,
+    cleanupHierarchyForDeletedModel,
+  } = useHierarchy({
+    positions,
+    rotations,
+    setPositions,
+    setRotations,
+    setSelectedModelId,
+    setStatus,
+    getModelName: (modelId) => allModels.find((model) => model.id === modelId)?.name,
+    closeInspector,
+  });
+
+  const {
+    faceSelection,
+    startFaceConnection,
+    clearFaceSelection,
+    handleFaceClick,
+  } = useFaceConnection({
+    setSelectedModelId,
+    setStatus,
+    focusOn,
+    getModelPose: (modelId) => ({
+      position: normalizeVector(positions[modelId] ?? [0, 0, 0]),
+      quaternion: new THREE.Quaternion(...(rotations[modelId] ?? [0, 0, 0, 1])),
+    }),
+    applySubtreeTransform,
+  });
+
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
-
-  const getModelLocalPose = (modelId) => {
-    const worldPosition = vectorFromArray(positions[modelId] ?? [0, 0, 0]);
-    const worldQuaternion = quaternionFromArray(rotations[modelId] ?? [0, 0, 0, 1]);
-    const parentId = attachmentParentByChild[modelId];
-
-    if (!parentId) {
-      return {
-        position: [worldPosition.x, worldPosition.y, worldPosition.z],
-        quaternion: [worldQuaternion.x, worldQuaternion.y, worldQuaternion.z, worldQuaternion.w],
-      };
-    }
-
-    const parentWorldPosition = vectorFromArray(positions[parentId] ?? [0, 0, 0]);
-    const parentWorldQuaternion = quaternionFromArray(rotations[parentId] ?? [0, 0, 0, 1]);
-    const parentInverseQuaternion = parentWorldQuaternion.clone().invert();
-
-    const localPosition = worldPosition.clone().sub(parentWorldPosition).applyQuaternion(parentInverseQuaternion);
-    const localQuaternion = parentInverseQuaternion.multiply(worldQuaternion).normalize();
-
-    return {
-      position: [localPosition.x, localPosition.y, localPosition.z],
-      quaternion: [localQuaternion.x, localQuaternion.y, localQuaternion.z, localQuaternion.w],
-    };
-  };
-
-
   const renderModelNode = (modelId, index = 0) => {
     const model = allModels.find((item) => item.id === modelId);
     if (!model || !visibleModelIds.has(modelId)) {
@@ -256,10 +191,6 @@ export default function App() {
 
   const topLevelVisibleModels = visibleModels.filter((model) => !attachmentParentByChild[model.id]);
 
-  const getMoveTargets = (modelId) => {
-    return [modelId, ...collectDescendantIds(modelId, attachmentChildrenByParent)];
-  };
-
   const handleToggleModel = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
 
@@ -275,20 +206,17 @@ export default function App() {
     });
   };
 
+  const openInspector = (modelId) => {
+    const normalizedModelId = normalizeModelId(modelId);
+    setPartPopupModelId(null);
+    openInspectorState(normalizedModelId);
+    handleSelectModel(normalizedModelId);
+  };
+
   const handleSelectModel = (modelId) => {
-    if (isSelectingParts) {
+    if (selectionModeActive) {
       const normalizedModelId = normalizeModelId(modelId);
-
-      setSelectionDraftIds((current) => {
-        const next = current.includes(normalizedModelId)
-          ? current.filter((id) => id !== normalizedModelId)
-          : [...current, normalizedModelId];
-
-        setSelectedModelId(normalizedModelId);
-        setStatus(`${next.length} part${next.length === 1 ? "" : "s"} selected for joining. Press Enter to choose parent and child.`);
-        return next;
-      });
-
+      handleJoinSelectionToggle(normalizedModelId);
       focusOn(positions[modelId] ?? [0, 0, 0]);
       return;
     }
@@ -297,192 +225,16 @@ export default function App() {
     setPartPopupModelId(null);
     const m = allModels.find((mm) => mm.id === modelId);
     if (m) setStatus(`Selected ${m.name}`);
-    // focus camera on the model's base position
     focusOn(positions[modelId] ?? [0, 0, 0]);
   };
 
-  const getModelPose = (modelId) => ({
-    position: normalizeVector(positions[modelId] ?? [0, 0, 0]),
-    quaternion: new THREE.Quaternion(...(rotations[modelId] ?? [0, 0, 0, 1])),
-  });
-
-  const focusOn = (pos) => {
-    if (!pos) return;
-    const v = pos.isVector3 ? pos : normalizeVector(pos);
-    if (controlsRef.current) {
-      controlsRef.current.target.copy(v);
-      controlsRef.current.update();
-    }
-  };
-
-  const applyFaceSnap = (sourcePick, targetPick) => {
-    if (!sourcePick || !targetPick) {
-      return;
-    }
-
-    if (sourcePick.modelId === targetPick.modelId) {
-      setStatus("Pick a face on a different part.");
-      return;
-    }
-
-    const sourcePose = getModelPose(sourcePick.modelId);
-    const targetPose = getModelPose(targetPick.modelId);
-
-    const sourceWorldNormal = sourcePick.localNormal.clone().applyQuaternion(sourcePose.quaternion).normalize();
-    const targetWorldNormal = targetPick.localNormal.clone().applyQuaternion(targetPose.quaternion).normalize();
-    const snapQuaternion = new THREE.Quaternion().setFromUnitVectors(sourceWorldNormal, targetWorldNormal.clone().negate());
-
-    const nextQuaternion = snapQuaternion.multiply(sourcePose.quaternion.clone()).normalize();
-    const targetWorldPoint = targetPick.localPoint.clone().applyQuaternion(targetPose.quaternion).add(targetPose.position);
-    const sourcePointAfterRotation = sourcePick.localPoint.clone().applyQuaternion(nextQuaternion);
-    const nextPosition = targetWorldPoint.sub(sourcePointAfterRotation);
-
-    applySubtreeTransform(sourcePick.modelId, nextPosition, nextQuaternion);
-
-    setStatus(`Aligned ${sourcePick.modelId} to ${targetPick.modelId}.`);
-    // focus camera on the moved source part
-    focusOn(nextPosition);
-    clearFaceSelection();
-  };
-
-  const clearFaceSelection = () => {
-    setFaceSelection(null);
-    setFaceConnectMode(false);
-  };
-
-  const startFaceConnection = () => {
-  setFaceConnectMode(true);
-
-  setFaceSelection({
-    phase: "waiting-for-source",
-    source: null,
-    target: null,
-  });
-
-  setStatus("Click the SOURCE face.");
-};
-
-  const selectSourceFace = (facePick) => {
-    setFaceSelection({
-      phase: "waiting-for-target",
-      source: facePick,
-      target: null,
-    });
-    setSelectedModelId(facePick.modelId);
-    setStatus("Select the next face to connect.");
-    // focus camera on the picked face point
-    focusOn(facePick.worldPoint ?? facePick.localPoint ?? [0, 0, 0]);
-  };
-
-  const handleFaceClick = (facePick) => {
-    if (!faceConnectMode || !facePick?.modelId) {
-      return;
-    }
-
-    // First face
-    if (faceSelection?.phase === "waiting-for-source") {
-      setFaceSelection({
-        phase: "waiting-for-target",
-        source: facePick,
-      });
-
-      setSelectedModelId(facePick.modelId);
-
-      setStatus("Source selected. Click the TARGET face.");
-
-      return;
-    }
-
-  // Second face
-  if (faceSelection?.phase === "waiting-for-target") {
-    applyFaceSnap(faceSelection.source, facePick);
-  }
-};
-
-  const openInspector = (modelId) => {
-    const normalizedModelId = normalizeModelId(modelId);
-    const settings = modelSettings[normalizedModelId] ?? createDefaultSettings();
-    setPartPopupModelId(null);
-    setInspectorModelId(normalizedModelId);
-    setInspectorTab(null);
-    setInspectorDraft({
-      color: settings.color,
-      motion: normalizeMotionDraft(settings.motion),
-      parameters: normalizeParameterDrafts(settings.parameters),
-    });
-    handleSelectModel(normalizedModelId);
-  };
-
-  const closeInspector = () => {
-    setInspectorModelId(null);
-    setInspectorDraft(null);
-    setInspectorTab(null);
+  const handleInspectorTabChange = (tab) => {
+    setInspectorTab(tab);
+    handleHierarchyInspectorTabChange(tab);
   };
 
   const closePartPopup = () => {
     setPartPopupModelId(null);
-  };
-
-  const updateInspectorDraft = (patch) => {
-    const hasParameters = Object.prototype.hasOwnProperty.call(patch, "parameters");
-
-    setInspectorDraft((current) => ({
-      ...current,
-      ...patch,
-      motion: patch.motion ? normalizeMotionDraft({ ...(current?.motion ?? defaultMotion), ...patch.motion }) : current?.motion ?? defaultMotion,
-      parameters: hasParameters ? normalizeParameterDrafts(patch.parameters) : current?.parameters ?? [],
-    }));
-  };
-
-  const saveInspector = () => {
-    if (!inspectorModelId || !inspectorDraft) {
-      closeInspector();
-      return;
-    }
-
-    const nextMotion = normalizeMotionDraft(inspectorDraft.motion ?? defaultMotion);
-    const nextSettings = {
-      color: inspectorDraft.color,
-      motion: nextMotion,
-      parameters: compactParameterDrafts(inspectorDraft.parameters ?? []),
-    };
-
-    setModelSettings((currentSettings) => ({
-      ...currentSettings,
-      [inspectorModelId]: nextSettings,
-    }));
-
-    setStatus(`Updated ${allModels.find((model) => model.id === inspectorModelId)?.name ?? "model"}.`);
-    closeInspector();
-  };
-
-  const saveInspectorParameters = (parameters = []) => {
-    if (!inspectorModelId) {
-      return;
-    }
-
-    const nextParameters = compactParameterDrafts(parameters);
-    const modelName = allModels.find((model) => model.id === inspectorModelId)?.name ?? "model";
-
-    setInspectorDraft((current) =>
-      current
-        ? {
-            ...current,
-            parameters: normalizeParameterDrafts(nextParameters),
-          }
-        : current,
-    );
-
-    setModelSettings((currentSettings) => ({
-      ...currentSettings,
-      [inspectorModelId]: {
-        ...(currentSettings[inspectorModelId] ?? createDefaultSettings()),
-        parameters: nextParameters,
-      },
-    }));
-
-    setStatus(`Saved parameters for ${modelName}.`);
-    setInspectorTab("motion");
   };
 
   const parseMoveCoordinates = (input) => {
@@ -529,69 +281,6 @@ export default function App() {
     focusOn(nextPosition);
   };
 
-  const handleSelectJoinParts = () => {
-    setSelectionModeActive(true);
-    setSelectionDraftIds([]);
-    setSelectedModelId(null);
-    setJoinDialog(null);
-    setStatus("Click two or more parts to join, then press Enter to choose parent and child.");
-    closeInspector();
-  };
-
-  const handleInspectorTabChange = (tab) => {
-    setInspectorTab(tab);
-
-    if (tab !== "select") {
-      setSelectionDraftIds([]);
-      setSelectionModeActive(false);
-      setJoinDialog(null);
-    }
-  };
-
-  const handleJoinSelectionChange = (kind, modelId) => {
-    setJoinDialog((current) => ({
-      ...(current ?? {}),
-      [kind]: normalizeModelId(modelId),
-    }));
-  };
-
-  const confirmJoinSelection = () => {
-    if (!joinDialog) {
-      return;
-    }
-
-    const parentId = normalizeModelId(joinDialog.parentId);
-    const childId = normalizeModelId(joinDialog.childId);
-    const selectedPartIds = joinDialog.partIds ?? [];
-
-    if (!selectedPartIds.includes(parentId) || !selectedPartIds.includes(childId)) {
-      setStatus("Choose both parent and child from the selected parts.");
-      return;
-    }
-
-    if (parentId === childId) {
-      setStatus("Choose two different parts for the join.");
-      return;
-    }
-
-    const childDescendants = collectDescendantIds(childId, attachmentChildrenByParent);
-    if (childDescendants.includes(parentId)) {
-      setStatus("Choose a parent that is not inside the child subtree.");
-      return;
-    }
-
-    setAttachmentParentByChild((current) => ({
-      ...current,
-      [childId]: parentId,
-    }));
-    setSelectedModelId(parentId);
-    resetJoinSelection();
-
-    const parentName = allModels.find((model) => model.id === parentId)?.name ?? parentId;
-    const childName = allModels.find((model) => model.id === childId)?.name ?? childId;
-    setStatus(`Joined ${childName} under ${parentName}. Parent motion now carries the child.`);
-  };
-
   const handleMoveSelectedOrAttached = (dx, dy, dz) => {
     if (!selectedModelId) {
       setStatus("No model selected to move.");
@@ -604,6 +293,7 @@ export default function App() {
 
     applySubtreeTransform(selectedModelId, nextPosition, currentQuaternion);
   };
+
   const copyInspectorModel = (modelId) => {
     const src = allModels.find((m) => m.id === modelId);
     if (!src) return;
@@ -643,7 +333,6 @@ export default function App() {
     focusOn(newPos);
     closeInspector();
   };
-  
 
   const handleShowOnlyModel = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
@@ -691,37 +380,13 @@ export default function App() {
       if (!nextVisibleIds.size) nextVisibleIds.add(defaultModel.id);
       return nextVisibleIds;
     });
-    setAttachmentParentByChild((currentAttachments) => {
-      const nextAttachments = {};
+    cleanupHierarchyForDeletedModel(normalizedModelId);
 
-      Object.entries(currentAttachments).forEach(([childId, parentId]) => {
-        if (childId === normalizedModelId || parentId === normalizedModelId) {
-          return;
-        }
-
-        nextAttachments[childId] = parentId;
-      });
-
-      return nextAttachments;
-    });
-
-    setSelectionDraftIds((currentSelection) => currentSelection.filter((id) => id !== normalizedModelId));
-    setFaceSelection((currentSelection) => {
-      if (!currentSelection) return currentSelection;
-      if (currentSelection.source?.modelId === normalizedModelId || currentSelection.target?.modelId === normalizedModelId) {
-        return null;
+    if (faceSelection) {
+      if (faceSelection.source?.modelId === normalizedModelId || faceSelection.target?.modelId === normalizedModelId) {
+        clearFaceSelection();
       }
-
-      return currentSelection;
-    });
-    setJoinDialog((currentJoinDialog) => {
-      if (!currentJoinDialog) return currentJoinDialog;
-      if (currentJoinDialog.partIds?.includes(normalizedModelId) || currentJoinDialog.parentId === normalizedModelId || currentJoinDialog.childId === normalizedModelId) {
-        return null;
-      }
-
-      return currentJoinDialog;
-    });
+    }
 
     if (inspectorModelId === normalizedModelId) {
       closeInspector();
@@ -878,7 +543,7 @@ export default function App() {
           allModels={allModels}
           activeTab={inspectorTab}
           setActiveTab={handleInspectorTabChange}
-          onSelectJoinParts={handleSelectJoinParts}
+          onSelectJoinParts={startJoinSelection}
           onMovePart={handleInspectorMove}
           startFaceConnection={startFaceConnection}
         />
