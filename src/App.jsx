@@ -16,6 +16,7 @@ import Inspector from "./components/Inspector";
 import PartInfoPopup from "./components/PartInfoPopup";
 import Loader from "./components/Loader";
 import JoinDialog from "./components/JoinDialog";
+import useUploadManager from "./hooks/useUploadManager";
 
 import {
   defaultMotion,
@@ -35,12 +36,6 @@ import {
 } from "./utils/modelUtils";
 
 import {
-  supportedExtensions,
-  getFileExtension,
-  createUploadId,
-} from "./utils/uploadUtils";
-
-import {
   getForceBasedColor,
   isForceCritical,
 } from "./utils/forceUtils";
@@ -54,7 +49,6 @@ const defaultModel = {
 };
 
 export default function App() {
-  const [uploads, setUploads] = useState([]);
   // start with no models visible by default
   const [visibleModelIds, setVisibleModelIds] = useState(() => new Set([defaultModel.id]));
   const [selectedModelId, setSelectedModelId] = useState(null);
@@ -65,7 +59,6 @@ export default function App() {
   const [faceSelection, setFaceSelection] = useState(null);
   const [faceConnectMode, setFaceConnectMode] = useState(false);
   const [status, setStatus] = useState("House model loaded.");
-  const objectUrlsRef = useRef([]);
   const [positions, setPositions] = useState({});
   const [rotations, setRotations] = useState({});
   const [modelSettings, setModelSettings] = useState(() => ({}));
@@ -75,6 +68,22 @@ export default function App() {
   const [partPopupModelId, setPartPopupModelId] = useState(null);
   const [nudgeDistance, setNudgeDistance] = useState(5);
   const controlsRef = useRef(null);
+
+  const {
+    uploads,
+    setUploads,
+    objectUrlsRef,
+    handleFileChange,
+    releaseUploadUrl,
+  } = useUploadManager({
+    defaultModelId: defaultModel.id,
+    converterEndpoint,
+    createDefaultSettings,
+    setPositions,
+    setModelSettings,
+    setVisibleModelIds,
+    setStatus,
+  });
 
   const isSelectingParts = selectionModeActive;
 
@@ -160,13 +169,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    return () => {
-      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-      objectUrlsRef.current = [];
-    };
-  }, []);
-
-  useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key !== "Enter" || !selectionModeActive || !selectionDraftIds.length) {
         return;
@@ -179,49 +181,6 @@ export default function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectionDraftIds, selectionModeActive]);
-
-  const convertToGlb = async (file) => {
-    const extension = getFileExtension(file.name);
-
-    if (extension === "glb") {
-      const url = URL.createObjectURL(file);
-      objectUrlsRef.current.push(url);
-
-      return {
-        id: createUploadId(file, "glb"),
-        name: file.name,
-        url,
-        isDefault: false,
-        sourceExtension: "glb",
-      };
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch(converterEndpoint, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const message = await response.text();
-      throw new Error(message || `Failed to convert ${file.name}`);
-    }
-
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    objectUrlsRef.current.push(url);
-
-    return {
-      id: createUploadId(file, "glb"),
-      name: `${file.name.replace(/\.(step|stl)$/i, "")}.glb`,
-      url,
-      isDefault: false,
-      sourceExtension: extension,
-      convertedFrom: extension,
-    };
-  };
 
   const allModels = [defaultModel, ...uploads];
   const visibleModels = allModels.filter((model) => visibleModelIds.has(model.id));
@@ -299,82 +258,6 @@ export default function App() {
 
   const getMoveTargets = (modelId) => {
     return [modelId, ...collectDescendantIds(modelId, attachmentChildrenByParent)];
-  };
-
-  const handleFileChange = async (event) => {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-
-    if (!files.length) {
-      return;
-    }
-
-    const validFiles = files.filter((file) => supportedExtensions.includes(getFileExtension(file.name)));
-    const rejectedCount = files.length - validFiles.length;
-
-    if (!validFiles.length) {
-      setStatus("Unsupported file type. Use .glb, .stl, or .step.");
-      return;
-    }
-
-    setStatus(`Converting ${validFiles.length} file${validFiles.length === 1 ? "" : "s"}...`);
-
-    const results = await Promise.allSettled(validFiles.map((file) => convertToGlb(file)));
-    const nextUploads = results
-      .filter((result) => result.status === "fulfilled")
-      .map((result) => result.value);
-    const failedFiles = results
-      .map((result, index) => ({ result, file: validFiles[index] }))
-      .filter(({ result }) => result.status === "rejected");
-
-    if (!nextUploads.length) {
-      const firstFailure = failedFiles[0]?.result.reason?.message ?? "Conversion failed.";
-      setStatus(firstFailure);
-      return;
-    }
-
-    setUploads((currentUploads) => {
-      const updated = [...currentUploads, ...nextUploads];
-      // initialize positions for new uploads spaced along X
-      setPositions((p) => {
-        const next = { ...p };
-        nextUploads.forEach((model, index) => {
-          if (!next[model.id]) {
-            const x = (currentUploads.length + index + 1) * 70;
-            next[model.id] = [x, 0, 0];
-          }
-        });
-        return next;
-      });
-
-      return updated;
-    });
-    setModelSettings((currentSettings) => {
-      const nextSettings = { ...currentSettings };
-      nextUploads.forEach((model, index) => {
-        nextSettings[model.id] = createDefaultSettings(uploads.length + index + 1);
-      });
-      return nextSettings;
-    });
-    setVisibleModelIds((currentVisibleIds) => {
-      const nextVisibleIds = new Set(currentVisibleIds);
-
-      if (nextVisibleIds.size === 1 && nextVisibleIds.has(defaultModel.id)) {
-        nextVisibleIds.delete(defaultModel.id);
-      }
-
-      nextUploads.forEach((model) => nextVisibleIds.add(model.id));
-
-      return nextVisibleIds;
-    });
-
-    const addedMessage =
-      nextUploads.length === 1
-        ? `${nextUploads[0].convertedFrom ? `${nextUploads[0].convertedFrom.toUpperCase()} converted to GLB` : "GLB uploaded"}: ${nextUploads[0].name}.`
-        : `${nextUploads.length} files ready for viewing.`;
-    const rejectedMessage = rejectedCount ? ` ${rejectedCount} unsupported file(s) skipped.` : "";
-    const failedMessage = failedFiles.length ? ` ${failedFiles.length} file(s) could not be converted.` : "";
-    setStatus(`${addedMessage}${rejectedMessage}${failedMessage}`);
   };
 
   const handleToggleModel = (modelId) => {
@@ -855,21 +738,12 @@ export default function App() {
     const remainingCount = allModels.length - 1;
     setStatus(`Deleted ${modelToDelete.name}. ${remainingCount} model${remainingCount === 1 ? "" : "s"} remain.`);
 
-    const deletedUrls = new Set(objectUrlsRef.current.filter((url) => url === modelToDelete.url));
-    if (deletedUrls.size) {
-      const stillUsedUrls = new Set(
-        allModels
-          .filter((model) => model.id !== normalizedModelId)
-          .map((model) => model.url),
-      );
-
-      deletedUrls.forEach((url) => {
-        if (!stillUsedUrls.has(url)) {
-          URL.revokeObjectURL(url);
-          objectUrlsRef.current = objectUrlsRef.current.filter((currentUrl) => currentUrl !== url);
-        }
-      });
-    }
+    releaseUploadUrl(
+      modelToDelete.url,
+      allModels
+        .filter((model) => model.id !== normalizedModelId)
+        .map((model) => model.url),
+    );
   };
 
   const handleModelMove = (modelId, nextPosition) => {
