@@ -14,6 +14,7 @@ export default function Sidebar({
   handleSelectModel,
   handleDeleteModel,
   openInspector,
+  handleExportDigitalTwin,
   status,
 }) {
   return (
@@ -44,6 +45,16 @@ export default function Sidebar({
             Reset view
           </button>
         </div>
+
+        <div className="library-actions">
+          <button
+              type="button"
+              className="library-action"
+              onClick={handleExportDigitalTwin}
+          >
+              📦 Publish Digital Twin
+          </button>
+      </div>
 
         <div className={`model-item ${selectedModelId === defaultModel.id ? "selected" : ""}`}>
           <div className="model-label" onClick={() => handleSelectModel(defaultModel.id)}>

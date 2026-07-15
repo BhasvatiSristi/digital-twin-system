@@ -39,6 +39,11 @@ import {
   isForceCritical,
 } from "./utils/forceUtils";
 
+import {
+  exportDigitalTwin,
+  downloadDigitalTwin,
+} from "./services/DigitalTwinExporter";
+
 const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
 const defaultModel = {
   id: "default-model",
@@ -434,6 +439,21 @@ export default function App() {
     setStatus(`Showing all ${allModels.length} models.`);
   };
 
+  const handleExportDigitalTwin = () => {
+    const twin = exportDigitalTwin({
+      projectName: "Mining Excavator",
+      defaultModel,
+      uploads,
+      positions,
+      rotations,
+      modelSettings,
+      attachmentParentByChild,
+      visibleModelIds,
+    });
+    downloadDigitalTwin(twin, "MiningExcavator.dtwin.json");
+    setStatus("Digital Twin exported successfully.");
+  };
+
   const activeInspectorMotionType = inspectorDraft?.motion?.type ?? "none";
   const faceHintText = faceSelection?.phase === "waiting-for-target" ? "Select the next face to connect" : null;
   const selectedPart = partPopupModelId ? allModels.find((model) => model.id === partPopupModelId) : null;
@@ -475,6 +495,7 @@ export default function App() {
         handleSelectModel={handleSelectModel}
         handleDeleteModel={handleDeleteModel}
         openInspector={openInspector}
+        handleExportDigitalTwin={handleExportDigitalTwin}
         status={status}
       />
 
