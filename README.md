@@ -42,14 +42,16 @@ GLB files open directly. STL and STEP files are prepared in the background so th
 
 ## How to run it
 
-1. Install the Python packages from `requirements.txt`.
-2. Start the Python service with `uvicorn conversion_server:app --reload --port 8000`.
-3. Start the web app with `npm run dev`.
+1. Install the node modules required for this application with `npm install`. 
+[Node version should be >= v.20 since using Vite+React.]
+2. Create a new virtual environment and install the Python packages from `requirements.txt`.
+3. Start the Python service with `uvicorn conversion_server:app --reload --port 8000`.
+4. Start the web app with `npm run dev`.
 
 ## Basic workflow
 
 1. Open the app in the browser.
-2. Load a supported model file.
+2. Load a supported model file. [A default model is preloaded.]
 3. Pick the part or assembly you want to work with.
 4. Use the sidebar and inspector to review or change details.
 5. Save any part-specific information you want to keep.

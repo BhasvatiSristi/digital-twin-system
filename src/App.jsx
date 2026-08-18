@@ -48,7 +48,7 @@ const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/conve
 const defaultModel = {
   id: "default-model",
   name: "House model (3d_house.glb)",
-  url: "/model/3d_house.glb",
+  url: "/public/3d_house.glb",
   isDefault: true,
 };
 

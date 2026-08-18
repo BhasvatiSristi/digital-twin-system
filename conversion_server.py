@@ -53,6 +53,11 @@ def convert_stl_to_glb(source_path: Path, output_path: Path) -> None:
     mesh.export(str(output_path))
 
 
+@app.get("/")
+def home():
+    return {
+        "message": "Conversion backend working.."
+    }
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
