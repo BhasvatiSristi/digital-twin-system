@@ -56,6 +56,7 @@ export default function App() {
   // start with no models visible by default
   const [visibleModelIds, setVisibleModelIds] = useState(() => new Set([defaultModel.id]));
   const [selectedModelId, setSelectedModelId] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [status, setStatus] = useState("House model loaded.");
   const [positions, setPositions] = useState({});
   const [rotations, setRotations] = useState({});
@@ -480,7 +481,7 @@ export default function App() {
     : null;
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
       <Sidebar
         defaultModel={defaultModel}
         allModels={allModels}
@@ -497,6 +498,8 @@ export default function App() {
         openInspector={openInspector}
         handleExportDigitalTwin={handleExportDigitalTwin}
         status={status}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}
       />
 
       <div className="viewer-panel">

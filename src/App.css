@@ -1,9 +1,14 @@
 .app-shell {
-	min-height: 100vh;
-	display: grid;
-	grid-template-columns: 340px minmax(0, 1fr);
-	background: #0b1220;
-	color: #e5eef9;
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 340px minmax(0, 1fr);
+    background: #0b1220;
+    color: #e5eef9;
+    transition: grid-template-columns 0.25s ease;
+}
+
+.app-shell.sidebar-is-collapsed {
+    grid-template-columns: 48px minmax(0, 1fr);
 }
 
 .viewer-panel {
@@ -35,15 +40,66 @@
 }
 
 .upload-panel {
-	padding: 32px 28px;
-	border-right: 1px solid rgba(255, 255, 255, 0.08);
-	background: linear-gradient(180deg, #172033 0%, #101827 100%);
-	backdrop-filter: blur(18px);
-	display: flex;
-	flex-direction: column;
-	justify-content: flex-start;
-	gap: 16px;
-	overflow-y: auto;
+    position: relative;
+    padding: 32px 28px;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    background: linear-gradient(180deg, #172033 0%, #101827 100%);
+    backdrop-filter: blur(18px);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 16px;
+    overflow-y: auto;
+    transition: padding 0.25s ease;
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle {
+    position: absolute;
+    top: 18px;
+    right: 10px;
+    width: 28px;
+    height: 28px;
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+    border: 1px solid rgba(143, 179, 255, 0.35);
+    background: #172033;
+    color: #eaf1ff;
+
+    cursor: pointer;
+    font-size: 20px;
+    font-weight: 700;
+
+    transition:
+        background 0.15s ease,
+        transform 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+    background: #24334d;
+    transform: scale(1.08);
+}
+
+/* Collapsed sidebar */
+.app-shell.sidebar-is-collapsed .upload-panel {
+    padding: 32px 0;
+    overflow: visible;
+}
+
+/* Hide all sidebar content except toggle button */
+.app-shell.sidebar-is-collapsed
+.upload-panel > *:not(.sidebar-toggle) {
+    display: none;
+}
+
+/* Keep toggle visible */
+.app-shell.sidebar-is-collapsed .sidebar-toggle {
+    right: 10px;
 }
 
 .eyebrow {
@@ -239,6 +295,11 @@
 		grid-template-columns: 1fr;
 	}
 
+	/* Keep the same layout even when sidebar is collapsed */
+	.app-shell.sidebar-is-collapsed {
+		grid-template-columns: 1fr;
+	}
+
 	.viewer-panel {
 		min-height: 68vh;
 	}
@@ -246,6 +307,14 @@
 	.upload-panel {
 		border-right: 0;
 		border-top: 1px solid rgba(229, 238, 249, 0.12);
+	}
+
+	/* Collapsed sidebar on smaller screens */
+	.app-shell.sidebar-is-collapsed .upload-panel {
+		min-height: 48px;
+		height: 48px;
+		padding: 0;
+		overflow: hidden;
 	}
 
 	.part-popup-grid {

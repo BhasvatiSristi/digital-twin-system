@@ -16,9 +16,20 @@ export default function Sidebar({
   openInspector,
   handleExportDigitalTwin,
   status,
+  sidebarCollapsed,
+  onToggleSidebar,
 }) {
   return (
-    <div className="upload-panel">
+    <div className={`upload-panel ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <button
+        type="button"
+        className="sidebar-toggle"
+        onClick={onToggleSidebar}
+        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        {sidebarCollapsed ? "›" : "‹"}
+      </button>
       <p className="eyebrow">CAD viewer</p>
       <h1>Upload a model and inspect the part.</h1>
       <p className="description">
