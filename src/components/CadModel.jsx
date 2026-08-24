@@ -1,4 +1,4 @@
-import { Center, Html, useGLTF } from "@react-three/drei";
+import { Html, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -30,9 +30,7 @@ function GltfModel({ url, color = "#cfd8dc" }) {
   }
 
   return (
-    <Center>
       <primitive object={scene} scale={0.6} />
-    </Center>
   );
 }
 
