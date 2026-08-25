@@ -39,25 +39,14 @@ import {
   isForceCritical,
 } from "./utils/forceUtils";
 
-import {
-  exportDigitalTwin,
-  downloadDigitalTwin,
-} from "./services/DigitalTwinExporter";
-
 const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
-const defaultModel = {
-  id: "default-model",
-  name: "House model (3d_house.glb)",
-  url: "/3d_house.glb",
-  isDefault: true,
-};
 
 export default function App() {
   // start with no models visible by default
-  const [visibleModelIds, setVisibleModelIds] = useState(() => new Set([defaultModel.id]));
+  const [visibleModelIds, setVisibleModelIds] = useState(() => new Set());
   const [selectedModelId, setSelectedModelId] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [status, setStatus] = useState("House model loaded.");
+  const [status, setStatus] = useState("Ready. Upload a model to begin.");
   const [positions, setPositions] = useState({});
   const [rotations, setRotations] = useState({});
   const [modelSettings, setModelSettings] = useState(() => ({}));
@@ -80,7 +69,6 @@ export default function App() {
     handleFileChange,
     releaseUploadUrl,
   } = useUploadManager({
-    defaultModelId: defaultModel.id,
     converterEndpoint,
     createDefaultSettings,
     setPositions,
@@ -89,7 +77,7 @@ export default function App() {
     setStatus,
   });
 
-  const allModels = [defaultModel, ...uploads];
+  const allModels = uploads;
 
   const {
     inspectorModelId,
@@ -206,8 +194,6 @@ export default function App() {
       if (nextVisibleIds.has(normalizedModelId)) nextVisibleIds.delete(normalizedModelId);
       else nextVisibleIds.add(normalizedModelId);
 
-      if (!nextVisibleIds.size) nextVisibleIds.add(defaultModel.id);
-
       return nextVisibleIds;
     });
   };
@@ -306,7 +292,7 @@ export default function App() {
 
     const newId = `${modelId}-copy-${Math.random().toString(36).slice(2, 8)}`;
     const newName = `${src.name ?? "Model"} (copy)`;
-    const newModel = { ...src, id: newId, name: newName, isDefault: false };
+    const newModel = { ...src, id: newId, name: newName};
 
     setUploads((current) => [...current, newModel]);
 
@@ -354,11 +340,6 @@ export default function App() {
   const handleDeleteModel = (modelId) => {
     const normalizedModelId = normalizeModelId(modelId);
 
-    if (normalizedModelId === defaultModel.id) {
-      setStatus("The default model cannot be deleted.");
-      return;
-    }
-
     const modelToDelete = allModels.find((model) => model.id === normalizedModelId);
     if (!modelToDelete) {
       return;
@@ -383,7 +364,6 @@ export default function App() {
     setVisibleModelIds((currentVisibleIds) => {
       const nextVisibleIds = new Set(currentVisibleIds);
       nextVisibleIds.delete(normalizedModelId);
-      if (!nextVisibleIds.size) nextVisibleIds.add(defaultModel.id);
       return nextVisibleIds;
     });
     cleanupHierarchyForDeletedModel(normalizedModelId);
@@ -440,21 +420,6 @@ export default function App() {
     setStatus(`Showing all ${allModels.length} models.`);
   };
 
-  const handleExportDigitalTwin = () => {
-    const twin = exportDigitalTwin({
-      projectName: "Mining Excavator",
-      defaultModel,
-      uploads,
-      positions,
-      rotations,
-      modelSettings,
-      attachmentParentByChild,
-      visibleModelIds,
-    });
-    downloadDigitalTwin(twin, "MiningExcavator.dtwin.json");
-    setStatus("Digital Twin exported successfully.");
-  };
-
   const activeInspectorMotionType = inspectorDraft?.motion?.type ?? "none";
   const faceHintText = faceSelection?.phase === "waiting-for-target" ? "Select the next face to connect" : null;
   const selectedPart = partPopupModelId ? allModels.find((model) => model.id === partPopupModelId) : null;
@@ -472,7 +437,7 @@ export default function App() {
         position: selectedPartPose?.position ?? [0, 0, 0],
         quaternion: selectedPartPose?.quaternion ?? [0, 0, 0, 1],
         visible: visibleModelIds.has(selectedPart.id),
-        isDefault: Boolean(selectedPart.isDefault),
+        isDefault: false,
         sourceLabel: selectedPart.convertedFrom ? `${selectedPart.convertedFrom.toUpperCase()} → GLB` : null,
         parentName: selectedPartParentId ? allModels.find((model) => model.id === selectedPartParentId)?.name ?? selectedPartParentId : null,
         childrenCount: selectedPartChildren.length,
@@ -483,7 +448,6 @@ export default function App() {
   return (
     <div className={`app-shell ${sidebarCollapsed ? "sidebar-is-collapsed" : ""}`}>
       <Sidebar
-        defaultModel={defaultModel}
         allModels={allModels}
         uploads={uploads}
         visibleModels={visibleModels}
@@ -496,7 +460,6 @@ export default function App() {
         handleSelectModel={handleSelectModel}
         handleDeleteModel={handleDeleteModel}
         openInspector={openInspector}
-        handleExportDigitalTwin={handleExportDigitalTwin}
         status={status}
         sidebarCollapsed={sidebarCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((prev) => !prev)}

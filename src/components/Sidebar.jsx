@@ -1,7 +1,6 @@
 import React from "react";
 
 export default function Sidebar({
-  defaultModel,
   allModels,
   uploads,
   visibleModels,
@@ -14,32 +13,52 @@ export default function Sidebar({
   handleSelectModel,
   handleDeleteModel,
   openInspector,
-  handleExportDigitalTwin,
   status,
   sidebarCollapsed,
   onToggleSidebar,
 }) {
   return (
-    <div className={`upload-panel ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div
+      className={`upload-panel ${
+        sidebarCollapsed ? "sidebar-collapsed" : ""
+      }`}
+    >
       <button
         type="button"
         className="sidebar-toggle"
         onClick={onToggleSidebar}
-        aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={
+          sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+        }
+        title={
+          sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+        }
       >
         {sidebarCollapsed ? "›" : "‹"}
       </button>
+
       <p className="eyebrow">CAD viewer</p>
+
       <h1>Upload a model and inspect the part.</h1>
+
       <p className="description">
-        Drop in a supported CAD export and the app will convert STEP and STL files to GLB before loading them.
+        Drop in a supported CAD export and the app will convert STEP
+        and STL files to GLB before loading them.
       </p>
-      <p className="hint">Supported formats: GLB, STL, STEP. Only GLB renders directly.</p>
+
+      <p className="hint">
+        Supported formats: GLB, STL, STEP. Only GLB renders directly.
+      </p>
 
       <label className="file-picker">
         <span>Choose GLB, STL, or STEP files</span>
-        <input multiple type="file" accept=".glb,.stl,.step" onChange={handleFileChange} />
+
+        <input
+          multiple
+          type="file"
+          accept=".glb,.stl,.step"
+          onChange={handleFileChange}
+        />
       </label>
 
       <div className="library-panel">
@@ -49,50 +68,42 @@ export default function Sidebar({
         </div>
 
         <div className="library-actions">
-          <button type="button" className="library-action" onClick={handleShowAllModels}>
+          <button
+            type="button"
+            className="library-action"
+            onClick={handleShowAllModels}
+            disabled={!allModels.length}
+          >
             Show all
           </button>
-          <button type="button" className="library-action" onClick={() => handleShowOnlyModel(defaultModel.id)}>
-            Reset view
-          </button>
-        </div>
 
-        <div className="library-actions">
           <button
-              type="button"
-              className="library-action"
-              onClick={handleExportDigitalTwin}
+            type="button"
+            className="library-action"
+            onClick={() =>
+              allModels.length > 0 &&
+              handleShowOnlyModel(allModels[0].id)
+            }
+            disabled={!allModels.length}
           >
-              📦 Publish Digital Twin
+            Show first
           </button>
-      </div>
-
-        <div className={`model-item ${selectedModelId === defaultModel.id ? "selected" : ""}`}>
-          <div className="model-label" onClick={() => handleSelectModel(defaultModel.id)}>
-            <span>{defaultModel.name}</span>
-            <small style={{ marginLeft: 8 }}>{visibleModelIds.has(defaultModel.id) ? "Visible" : "Hidden"}</small>
-          </div>
-          <div className="model-actions">
-            <button className="vis-btn" onClick={() => handleToggleModel(defaultModel.id)}>{visibleModelIds.has(defaultModel.id) ? "👁" : "🚫"}</button>
-            <button
-              type="button"
-              className="only-btn"
-              onClick={() => handleDeleteModel(defaultModel.id)}
-              disabled={defaultModel.isDefault}
-              aria-label={`Delete ${defaultModel.name}`}
-              title={defaultModel.isDefault ? "Default model cannot be deleted" : `Delete ${defaultModel.name}`}
-            >
-              X
-            </button>
-            <button className="only-btn" onClick={() => openInspector(defaultModel.id)}>Edit</button>
-          </div>
         </div>
 
         {uploads.length ? (
           uploads.map((model) => (
-            <div key={model.id} className={`model-item ${selectedModelId === model.id ? "selected" : ""}`}>
-              <div className="model-label" onClick={() => handleSelectModel(model.id)}>
+            <div
+              key={model.id}
+              className={`model-item ${
+                selectedModelId === model.id ? "selected" : ""
+              }`}
+            >
+              <div
+                className="model-label"
+                onClick={() => handleSelectModel(model.id)}
+              >
                 <span>{model.name}</span>
+
                 <small style={{ marginLeft: 8 }}>
                   {visibleModelIds.has(model.id)
                     ? model.convertedFrom
@@ -101,8 +112,20 @@ export default function Sidebar({
                     : "Hidden"}
                 </small>
               </div>
+
               <div className="model-actions">
-                <button className="vis-btn" onClick={() => handleToggleModel(model.id)}>{visibleModelIds.has(model.id) ? "👁" : "🚫"}</button>
+                <button
+                  className="vis-btn"
+                  onClick={() => handleToggleModel(model.id)}
+                  title={
+                    visibleModelIds.has(model.id)
+                      ? "Hide model"
+                      : "Show model"
+                  }
+                >
+                  {visibleModelIds.has(model.id) ? "👁" : "🚫"}
+                </button>
+
                 <button
                   type="button"
                   className="only-btn"
@@ -112,17 +135,31 @@ export default function Sidebar({
                 >
                   X
                 </button>
-                <button className="only-btn" onClick={() => openInspector(model.id)}>Edit</button>
+
+                <button
+                  className="only-btn"
+                  onClick={() => openInspector(model.id)}
+                >
+                  Edit
+                </button>
               </div>
             </div>
           ))
         ) : (
-          <p className="empty-state">No uploaded files yet.</p>
+          <p className="empty-state">
+            No uploaded files yet.
+          </p>
         )}
       </div>
 
       <p className="status">{status}</p>
-      <p className="active-model">Visible now: {visibleModels.length ? visibleModels.map((model) => model.name).join(", ") : "None"}</p>
+
+      <p className="active-model">
+        Visible now:{" "}
+        {visibleModels.length
+          ? visibleModels.map((model) => model.name).join(", ")
+          : "None"}
+      </p>
     </div>
   );
 }
