@@ -39,7 +39,10 @@ import {
   isForceCritical,
 } from "./utils/forceUtils";
 
-const converterEndpoint = import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
+const converterEndpoint =
+  window.location.protocol === "file:"
+    ? "http://127.0.0.1:8000/api/convert"
+    : import.meta.env.VITE_CONVERTER_ENDPOINT ?? "/api/convert";
 
 export default function App() {
   // start with no models visible by default

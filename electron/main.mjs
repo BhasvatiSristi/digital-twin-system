@@ -12,7 +12,7 @@ const isDev = !app.isPackaged;
 
 function startBackend() {
   const backendPath = isDev
-    ? path.join(__dirname, "../dist/conversion_server.exe")
+    ? path.join(__dirname, "../backend-dist/conversion_server.exe")
     : path.join(process.resourcesPath, "backend", "conversion_server.exe");
 
   console.log("Starting backend:", backendPath);
