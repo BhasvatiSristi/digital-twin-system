@@ -64,6 +64,19 @@ The web version consists of:
 - Render backend deployment
 
 ### Desktop Application
+## Download
+
+### Windows Desktop Application
+
+Download the latest Windows installer:
+
+**[Download TwinForge for Windows](https://github.com/BhasvatiSristi/digital-twin-system/releases/tag/v1.0.0)**
+
+The desktop application includes the local CAD conversion backend and does not require a separate Python installation.
+
+### Web Application
+
+**[Open TwinForge Web App](https://digital-twin-system-kappa.vercel.app/)**
 
 The Windows desktop version consists of:
 
