@@ -500,9 +500,30 @@ export default function App() {
           </div>
         </div>
 
-        <Canvas className="viewer-canvas" camera={{ position: [100, 50, 0], fov: 50 }}>
-          <ambientLight intensity={0.8} />
-          <directionalLight position={[10, 10, 10]} intensity={1.5} />
+        <Canvas
+            className="viewer-canvas"
+            camera={{ position: [100, 50, 0], fov: 50 }}
+          >
+            {/* Main overall illumination */}
+            <ambientLight intensity={1.8} />
+
+            {/* Main light */}
+            <directionalLight
+              position={[10, 20, 10]}
+              intensity={2.5}
+            />
+
+            {/* Front fill light */}
+            <directionalLight
+              position={[-10, 10, 20]}
+              intensity={1.5}
+            />
+
+            {/* Back/side fill light */}
+            <directionalLight
+              position={[10, 5, -20]}
+              intensity={1.2}
+        />
 
           {faceHintText ? (
             <Html center>
