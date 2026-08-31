@@ -5,8 +5,7 @@ import * as THREE from "three";
 
 import {
   Bounds, Html,
-  OrbitControls,
-  Environment,
+  OrbitControls
 } from "@react-three/drei";
 
 import "./App.css";
@@ -512,7 +511,6 @@ export default function App() {
           ) : null}
 
           <Suspense fallback={<Loader />}>
-            <Environment preset="city" background={false} />
             <Bounds fit clip observe margin={1.2}>
               {topLevelVisibleModels.map((model, index) => renderModelNode(model.id, index))}
             </Bounds>
